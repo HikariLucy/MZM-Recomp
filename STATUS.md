@@ -43,6 +43,8 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Boot/intro/title | **CONFIRMED** | Strict-static run: `IntroHandler=YES` (97 hits), `TitleScreenHandler=YES` (140 hits), zero dispatch misses/interpreter instructions |
 | Controllable Samus | **CONFIRMED** | Same strict-static session proceeded through New Game into controllable gameplay and multiple rooms |
 | Strict-static gameplay route | **CONFIRMED** | Same enforced session reached a Save Room with `dispatch_misses=0`, `interpreted_insns=0`, `unmapped=0`, `io_unhandled=0`; SRAM write persisted as a 32 KiB `.sav` |
+| SRAM save round-trip | **CONFIRMED** | Strict-static relaunch recognized and loaded the M3 save back into gameplay; reload run remained zero-miss/zero-interpreter |
+| USA compatibility campaign | **EXPERIMENTAL** | M4 campaign active; early-game route and save lifecycle confirmed, broad area/boss/item/fidelity coverage remains |
 | Full-game compatibility | **PENDING** | M4 |
 | NES Metroid compatibility | **PENDING** | Dedicated M4 workstream |
 | Europe runtime support | **PENDING** | After USA bring-up proves architecture |
@@ -358,3 +360,43 @@ This closes:
 The save result proves write persistence for the exercised route. It does **not yet** prove full save compatibility or reload/round-trip behavior; those remain M4 validation items.
 
 The active phase is now **M4 — Compatibility**.
+
+
+## M4.1 save round-trip
+
+The M3-created 32 KiB SRAM save was preserved, the process was closed, and MZMRecomp was relaunched under explicit strict-static enforcement.
+
+The existing save was recognized and loaded successfully back into gameplay.
+
+Reload runtime:
+
+```text
+strict_static=ENABLED
+self_heal_recompile=DISABLED
+cache_load=DISABLED
+interpreter_bridge=ABORT
+unmapped=0
+io_unhandled=0
+self_heal_coverage=FULLY_STATIC
+dispatch_misses=0
+interpreted_insns=0
+healed_native=0
+```
+
+Pre-reload save SHA-256:
+
+```text
+471f0af7a3b315f8ac39b7185e157e6f3fe4ef70be165961a986eaab6ede3c67
+```
+
+Post-session save SHA-256:
+
+```text
+ea77daab8a62852b041259f22230e11d1cd583b9a9596cb76d525d1f70843678
+```
+
+The changed hash is not treated as a failure because the save loaded correctly and the guest/runtime may legitimately persist changed SRAM state. Byte-stability is not an M4.1 requirement.
+
+**M4.1 basic save round-trip: CONFIRMED.**
+
+The next focus is the main USA compatibility campaign.

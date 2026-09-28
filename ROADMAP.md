@@ -309,6 +309,30 @@ This is the first milestone that may reasonably be described as a **static-recom
 
 ## M4 — Compatibility
 
+### M4.1 — SRAM lifecycle
+
+- [x] Save from strict-static gameplay.
+- [x] Persist 32 KiB SRAM image.
+- [x] Exit and relaunch the native host.
+- [x] Existing save recognized.
+- [x] Load save back into gameplay.
+- [x] Reload session remains `FULLY_STATIC`, zero-miss, zero-interpreter.
+
+**Gate:** basic save → exit → reload → gameplay round-trip. **PASSED 2026-09-28.**
+
+### M4.2 — USA progression campaign
+
+- [ ] Continue from the known-good save under strict-static enforcement.
+- [ ] Record area/room progression checkpoints.
+- [ ] Exercise major item acquisition and progression flags.
+- [ ] Exercise bosses/minibosses.
+- [ ] Exercise elevators/doors/transitions/cutscenes.
+- [ ] Record visual/audio/timing defects independently of static coverage.
+- [ ] Maintain reproducible before/after save hashes per diagnostic session.
+- [ ] Resolve the first deterministic compatibility blocker before advancing past it.
+
+See `docs/M4-COMPATIBILITY-CAMPAIGN.md`.
+
 Expand from the proof route to complete original-game behavior:
 
 - all areas and room transitions;

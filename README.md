@@ -25,7 +25,7 @@ unmapped=0
 io_unhandled=0
 ```
 
-The same session persisted a 32 KiB SRAM save. This is a **strict-static gameplay proof**, not a full-game compatibility claim. M4 now expands validation across the rest of the game, save reload/round-trip behavior, visual/audio accuracy, later dynamic-code paths, Europe, Fusion-link functionality, and NES Metroid.
+The same session persisted a 32 KiB SRAM save, and a later strict-static process successfully loaded that save back into gameplay with zero dispatch misses or interpreter instructions. This remains a **strict-static gameplay proof plus basic save round-trip**, not a full-game compatibility claim. M4 now expands validation across the rest of the game, visual/audio accuracy, later dynamic-code paths, Europe, Fusion-link functionality, and NES Metroid.
 
 See [STATUS.md](STATUS.md) for the exact evidence-backed status.
 
