@@ -13,6 +13,8 @@
 
 #if defined(MZM_RECOMP_UI)
 #include "game_launcher_boot.h"
+#include "launcher_state.h"
+#include "windows_executable_path.h"
 #include <SDL.h>
 #endif
 
@@ -102,6 +104,19 @@ int main(int argc, char** argv) {
         return launcher_result == 1 ? 0 : 1;
     }
 
+#ifdef _WIN32
+    // GBARecomp resolves input config and sidecar caches relative to argv[0].
+    // Point that host convention at the writable user configuration directory.
+    const auto config_dir = mzm::user_config_dir();
+    std::error_code config_error;
+    std::filesystem::create_directories(config_dir, config_error);
+    if (config_error) {
+        mzm::log_event("launcher_error=config_directory");
+        return 1;
+    }
+    args.front() = (config_dir / "MZMRecomp.exe").string();
+#endif
+
     std::vector<char*> av;
     av.reserve(args.size());
     for (auto& arg : args) {
@@ -110,7 +125,12 @@ int main(int argc, char** argv) {
 
     // GBARecomp creates a fresh SDL window. Apply the same native icon when
     // SDL announces that window, without modifying the runtime's window code.
-    const auto icon_path = std::filesystem::absolute(args.front()).parent_path()
+    const auto icon_path =
+#ifdef _WIN32
+        mzm::executable_path().parent_path()
+#else
+        std::filesystem::absolute(args.front()).parent_path()
+#endif
         / "assets/icons/mzm-recompiled.bmp";
     RuntimeIcon icon;
     icon.surface = SDL_LoadBMP(icon_path.string().c_str());

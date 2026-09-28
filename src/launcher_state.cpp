@@ -3,6 +3,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <vector>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 #include "sha1.h"
 
@@ -18,28 +24,41 @@ bool file_exists(const std::string& path) {
 
 fs::path user_base(const char* xdg, const char* fallback) {
 #ifdef _WIN32
-    if (const char* appdata = std::getenv("APPDATA")) return fs::path(appdata);
-#endif
+    if (const char* appdata = std::getenv("APPDATA"); appdata && *appdata)
+        return fs::path(appdata);
+    if (const char* local = std::getenv("LOCALAPPDATA"); local && *local)
+        return fs::path(local);
+    return fs::temp_directory_path();
+#else
     if (const char* value = std::getenv(xdg); value && *value) return fs::path(value);
     if (const char* home = std::getenv("HOME"); home && *home) return fs::path(home) / fallback;
     return fs::temp_directory_path();
+#endif
 }
 }  // namespace
 
 bool LauncherState::ready() const { return file_exists(rom) && file_exists(bios); }
 
 bool LauncherState::save(const fs::path& path) const {
-    const fs::path tmp = path.string() + ".tmp";
+    fs::path tmp = path;
+    tmp += ".tmp";
     {
         std::ofstream out(tmp, std::ios::trunc);
         if (!out) return false;
         out << "rom=" << rom << '\n' << "bios=" << bios << '\n';
         if (!out) return false;
     }
+#ifdef _WIN32
+    const bool moved = MoveFileExW(tmp.c_str(), path.c_str(),
+                                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    if (!moved) { std::error_code ec; fs::remove(tmp, ec); }
+    return moved;
+#else
     std::error_code ec;
     fs::rename(tmp, path, ec);
     if (ec) fs::remove(tmp);
     return !ec;
+#endif
 }
 
 LauncherState LauncherState::load(const fs::path& path) {
@@ -54,7 +73,13 @@ LauncherState LauncherState::load(const fs::path& path) {
 }
 
 fs::path user_config_dir() { return user_base("XDG_CONFIG_HOME", ".config") / "MZMRecompiled"; }
-fs::path user_log_dir() { return user_base("XDG_STATE_HOME", ".local/state") / "MZMRecompiled/logs"; }
+fs::path user_log_dir() {
+#ifdef _WIN32
+    if (const char* local = std::getenv("LOCALAPPDATA"); local && *local)
+        return fs::path(local) / "MZMRecompiled/logs";
+#endif
+    return user_base("XDG_STATE_HOME", ".local/state") / "MZMRecompiled/logs";
+}
 
 fs::path resolve_game_config(const fs::path& executable) {
     const auto beside = executable.parent_path() / "configs/mzm-us.toml";

@@ -12,7 +12,8 @@ void log_event(const char* event) {
     namespace fs = std::filesystem;
     fs::path root;
 #ifdef _WIN32
-    if (const char* appdata = std::getenv("APPDATA")) root = appdata;
+    if (const char* local = std::getenv("LOCALAPPDATA"); local && *local) root = local;
+    else if (const char* appdata = std::getenv("APPDATA"); appdata && *appdata) root = appdata;
 #endif
     if (root.empty()) {
         if (const char* xdg = std::getenv("XDG_STATE_HOME")) root = xdg;

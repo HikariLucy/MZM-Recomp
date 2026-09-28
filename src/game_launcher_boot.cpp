@@ -4,6 +4,7 @@
 #include "mzm_log.h"
 #include "launcher_files.h"
 #include "launcher_gl.h"
+#include "windows_executable_path.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
@@ -17,6 +18,9 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#ifdef _WIN32
+#include <shellapi.h>
+#endif
 
 namespace fs = std::filesystem;
 namespace {
@@ -108,6 +112,12 @@ enum class Page { Setup, Home, Enhancements, Settings, Data, About };
 
 int game_launcher_preboot(std::vector<std::string>& args,
                           const gbarecomp::RunOptions&) {
+#ifdef _WIN32
+    const fs::path executable = mzm::executable_path();
+    if (executable.empty()) return 2;
+#else
+    const fs::path executable = fs::absolute(args.front());
+#endif
     bool force = false, skip = false, direct = false;
     for (size_t i = 1; i < args.size();) {
         if (args[i] == "--launcher") { force = true; args.erase(args.begin() + i); continue; }
@@ -164,13 +174,13 @@ int game_launcher_preboot(std::vector<std::string>& args,
         if (window) SDL_DestroyWindow(window);
         SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS); return 2;
     }
-    set_window_icon(window, fs::absolute(args.front()));
+    set_window_icon(window, executable);
     SDL_GL_MakeCurrent(window, gl); SDL_GL_SetSwapInterval(1);
     IMGUI_CHECKVERSION(); ImGui::CreateContext();
     ImGui::GetIO().IniFilename = nullptr;
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     mzm::theme::apply();
-    const fs::path fonts = fs::absolute(args.front()).parent_path() / "assets/fonts";
+    const fs::path fonts = executable.parent_path() / "assets/fonts";
     ImFont* body = ImGui::GetIO().Fonts->AddFontFromFileTTF(
         (fonts / "LatoLatin-Regular.ttf").string().c_str(), 17.f);
     ImFont* bold = ImGui::GetIO().Fonts->AddFontFromFileTTF(
@@ -178,7 +188,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
     if (!body) ImGui::GetIO().Fonts->AddFontDefault();
     ImGui_ImplSDL2_InitForOpenGL(window, gl);
     ImGui_ImplOpenGL3_Init("#version 330");
-    const fs::path brand_path = fs::absolute(args.front()).parent_path()
+    const fs::path brand_path = executable.parent_path()
         / "assets/icons/mzm-brand-helm-core.png";
     LauncherTexture helm = launcher_texture_load(brand_path.string().c_str());
     if (!helm.id) std::fprintf(stderr, "[mzm-launcher] brand unavailable: %s\n", brand_path.string().c_str());
@@ -317,7 +327,11 @@ int game_launcher_preboot(std::vector<std::string>& args,
             ImGui::TextWrapped("Display, audio, save states, rewind, and fast-forward are managed during play.");
             ImGui::Separator();
             ImGui::TextColored(mzm::theme::cool, "HOST CONFIGURATION");
+#ifdef _WIN32
+            ImGui::TextWrapped("Keyboard and controller bindings load from your MZMRecompiled AppData folder.");
+#else
             ImGui::TextWrapped("Keyboard and controller bindings load from keybinds.ini and config.ini beside the executable.");
+#endif
             ImGui::TextWrapped("Screen color model is selected at launch via [video].screen, --screen, or GBARECOMP_SCREEN.");
             ImGui::EndChild();
         } else {
@@ -332,8 +346,15 @@ int game_launcher_preboot(std::vector<std::string>& args,
             ImGui::EndChild();
             if (ImGui::Button("Open Logs Folder", ImVec2(190, 38))) {
                 fs::create_directories(mzm::user_log_dir(), ec);
+#ifdef _WIN32
+                const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(
+                    nullptr, L"open", mzm::user_log_dir().c_str(),
+                    nullptr, nullptr, SW_SHOWNORMAL));
+                if (result <= 32) message = "Could not open logs folder.";
+#else
                 const std::string url = "file://" + mzm::user_log_dir().string();
                 if (SDL_OpenURL(url.c_str()) != 0) message = "Could not open logs folder.";
+#endif
             }
         }
         if (page != Page::Home && page != Page::Setup && page != Page::Data) {
@@ -370,7 +391,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
     SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
     if (!play) return 1;
     mzm::log_event("launch_requested rom=USA-BMXE bios=validated");
-    const fs::path config = mzm::resolve_game_config(fs::absolute(args.front()));
+    const fs::path config = mzm::resolve_game_config(executable);
     if (!fs::is_regular_file(config)) {
         std::fprintf(stderr, "[mzm-launcher] missing game config: %s\n", config.string().c_str()); return 2;
     }
