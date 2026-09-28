@@ -1,7 +1,7 @@
 # M2B Strict-static Title Qualification
 
 **Date:** 2026-09-28  
-**State:** **READY FOR QUALIFICATION**
+**State:** **CONFIRMED / PASSED**
 
 ## Preconditions already demonstrated
 
@@ -53,4 +53,26 @@ mzm_milestones intro_handler=YES ...
 
 and must not abort under `GBARECOMP_STRICT_STATIC=1`.
 
-If these criteria pass, **M2B and M2 Boot/Title may be closed** for the qualified USA route.
+Qualification result:
+
+```text
+cpu_backend=static-recompiled
+unmapped=0
+io_unhandled=0
+steps=181013
+cycles=1151698528
+ppu_frames=6891
+frames_presented=6889
+self_heal_coverage=FULLY_STATIC
+dispatch_misses=0
+interpreted_insns=0
+healed_native=0
+mzm_milestones intro_handler=YES intro_hits=97
+               title_handler=YES title_hits=140
+```
+
+The application did not abort under `GBARECOMP_STRICT_STATIC=1`.
+
+The same session continued past Title into New Game and early gameplay, so this evidence also feeds the M3 gameplay-proof record.
+
+**M2B PASSED. M2 Boot / Title is closed for the qualified USA route.**

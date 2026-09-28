@@ -228,7 +228,7 @@ self_heal_coverage=NOT_STATIC
 - [x] Implement byte-verified transient-RAM canonicalization.
 - [x] Re-run from a cold self-heal cache with `dispatch_misses=0`.
 - [x] Confirm `interpreted_insns=0`, `unmapped=0`, and `io_unhandled=0`.
-- [ ] Capture semantic Intro/Title milestone hits under explicit strict-static enforcement.
+- [x] Capture semantic Intro/Title milestone hits under explicit strict-static enforcement.
 
 Qualify:
 
@@ -253,7 +253,9 @@ reset → startup → InitializeGame → intro → title
 
 The exact validated route must run with strict-static enforcement and no hidden interpreter fallback.
 
-**Gate:** Boot → Intro → Title with the strict-static metrics defined by the pinned GBARecomp version.
+**Gate:** Boot → Intro → Title with the strict-static metrics defined by the pinned GBARecomp version. **PASSED 2026-09-28.**
+
+**M2 EXIT: PASSED — 2026-09-28.**
 
 ---
 
@@ -262,6 +264,12 @@ The exact validated route must run with strict-static enforcement and no hidden 
 **Goal:** prove that MZM is functioning as a game, not only as a boot demo.
 
 ### M3A — Hybrid gameplay
+
+- [x] Title → New Game.
+- [x] Opening → controllable Samus.
+- [x] Traverse multiple early rooms.
+- [x] Reach a Save Room.
+- [x] Complete an SRAM save write.
 
 ```text
 Title → New Game → opening → Samus control → first playable room
@@ -279,9 +287,21 @@ Validate:
 
 ### M3B — Static-verified gameplay
 
-Repeat the qualified route under strict-static enforcement with differential/runtime validation.
+- [x] Repeat the qualified route under `GBARECOMP_STRICT_STATIC=1`.
+- [x] Confirm `dispatch_misses=0`.
+- [x] Confirm `interpreted_insns=0`.
+- [x] Confirm `unmapped=0` and `io_unhandled=0`.
+- [x] Persist a 32 KiB SRAM save during the enforced route.
+- [ ] Validate save reload/round-trip compatibility (M4).
+- [ ] Expand differential fidelity coverage beyond the proof route (M4).
 
-**Gate:** controllable Samus in the first playable room with no unexpected dispatch/interpreter fallback on the qualified route.
+Repeat the qualified route under strict-static enforcement with runtime validation.
+
+**Gate:** controllable Samus in the first playable room with no unexpected dispatch/interpreter fallback on the qualified route. **PASSED 2026-09-28.**
+
+The qualified run actually continued through multiple rooms to a Save Room and completed a save write while strict-static enforcement remained active.
+
+**M3 EXIT: PASSED — 2026-09-28.**
 
 This is the first milestone that may reasonably be described as a **static-recompilation gameplay proof of life**.
 

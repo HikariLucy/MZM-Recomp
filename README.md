@@ -10,11 +10,22 @@ The project aims to run the original game logic as native host code using [GBARe
 
 ## Project status
 
-**Current phase:** M2 — Boot / title
+**Current phase:** M4 — Compatibility
 
 **M0 verdict:** **PASSED / GO**
 
-M0 feasibility and M1 static bootstrap are complete. The project has entered M2 boot/title qualification. A native Linux host now compiles and executes MZM through GBARecomp, but the demonstrated route is still hybrid (`self_heal_coverage=NOT_STATIC`), so strict-static boot/title and native gameplay are **not yet claimed**.
+M0 feasibility, M1 static bootstrap, M2 boot/title, and M3 gameplay proof are complete for the verified USA target.
+
+A strict-static Linux session has now reached Intro, Title, New Game, controllable Samus, multiple early rooms, and a Save Room with:
+
+```text
+dispatch_misses=0
+interpreted_insns=0
+unmapped=0
+io_unhandled=0
+```
+
+The same session persisted a 32 KiB SRAM save. This is a **strict-static gameplay proof**, not a full-game compatibility claim. M4 now expands validation across the rest of the game, save reload/round-trip behavior, visual/audio accuracy, later dynamic-code paths, Europe, Fusion-link functionality, and NES Metroid.
 
 See [STATUS.md](STATUS.md) for the exact evidence-backed status.
 
@@ -115,7 +126,7 @@ Current source-level audit has identified several areas that must be validated r
 
 M0 also identified bounded follow-up work: PPU mosaic is not yet rendered by the pinned runtime; MZM reuses one RAM address for several haze-code variants; WAITCNT/prefetch accuracy needs runtime validation; SRAM uses stack-local copied helpers; and Chozodia/NES paths contain later executable-RAM cases.
 
-These do **not** block M1, but they prevent premature claims of strict-static or full-game compatibility.
+These no longer block the proven early-game strict-static route, but they remain relevant to full M4 compatibility and prevent a full-game compatibility claim.
 
 ## Existing related work
 
