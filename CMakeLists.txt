@@ -435,8 +435,9 @@ if(MZM_RECOMP_UI)
         endif()
 
         target_link_libraries(MZMRecomp PRIVATE mzm_launcher_ui)
+        # SDL's Windows header otherwise renames our real main() to SDL_main.
         set_property(SOURCE src/main.cpp APPEND PROPERTY
-            COMPILE_DEFINITIONS MZM_RECOMP_UI=1)
+            COMPILE_DEFINITIONS MZM_RECOMP_UI=1 SDL_MAIN_HANDLED)
 
         message(STATUS "MZM-Recomp: recomp-ui launcher enabled")
     else()
