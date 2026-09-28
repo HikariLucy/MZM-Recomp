@@ -7,13 +7,19 @@ start. The launcher stores only their paths in your user configuration.
 ## Run a packaged build
 
 From the package directory, run `./MZMRecomp`. Select the game file and BIOS,
-verify that both show `VALIDATED`, press `Continue`, then `PLAY`. On later runs,
+verify that both show `Valid`, press `CONTINUE`, then `PLAY`. On later runs,
 the launcher opens Home if both files still validate. `Game Data` can change
 either file. A save file is written beside the selected game file by default.
 
 On Linux, SDL2, OpenGL, and compatible system libraries must be installed. A
 desktop display is required. If no native file picker is available, paste an
 absolute path into the corresponding field.
+
+The package includes the original MZM icon in SVG, PNG sizes and SDL2 BMP,
+plus `MZMRecompiled.desktop`. The desktop file is an installation template:
+`Exec=MZMRecomp` requires the binary on `PATH`, and `Icon=mzm-recompiled`
+requires an installed icon theme entry. It is not registered automatically.
+For a portable directory, run `./MZMRecomp` as above.
 
 ## Reproduce the package
 
