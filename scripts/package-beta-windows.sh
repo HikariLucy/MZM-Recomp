@@ -10,12 +10,20 @@ DLL_DIR="${MZM_WINDOWS_DLL_DIR:-$BUILD}"
 LICENSE_DIR="${MZM_WINDOWS_LICENSE_DIR:-}"
 
 fail() { echo "Windows package rejected: $*" >&2; exit 2; }
-command -v objdump >/dev/null || fail 'objdump is required to audit PE imports'
+OBJDUMP="${MZM_WINDOWS_OBJDUMP:-}"
+if [[ -z "$OBJDUMP" ]]; then
+    if command -v x86_64-w64-mingw32-objdump >/dev/null; then
+        OBJDUMP=x86_64-w64-mingw32-objdump
+    else
+        OBJDUMP=objdump
+    fi
+fi
+command -v "$OBJDUMP" >/dev/null || fail "$OBJDUMP is required to audit PE imports"
 command -v rg >/dev/null || fail 'rg is required to audit packaged configuration'
 command -v zip >/dev/null || fail 'zip is required'
 command -v unzip >/dev/null || fail 'unzip is required to verify the archive'
 [[ -f "$EXE" ]] || fail "missing $EXE"
-objdump -f "$EXE" | grep -q 'file format pei-x86-64' \
+"$OBJDUMP" -f "$EXE" | grep -q 'file format pei-x86-64' \
     || fail "$EXE is not PE32+ x86-64"
 [[ -d "$BUILD/assets/fonts" ]] || fail 'launcher fonts missing from build'
 [[ -d "$BUILD/assets/img" ]] || fail 'recomp-ui status glyphs missing from build'
@@ -86,14 +94,14 @@ while ((${#QUEUE[@]})); do
             if [[ -f "$candidate" ]]; then source="$candidate"; break; fi
         done
         [[ -n "$source" ]] || fail "missing imported DLL $dll; set MZM_WINDOWS_DLL_DIR"
-        objdump -f "$source" | grep -q 'file format pei-x86-64' \
+        "$OBJDUMP" -f "$source" | grep -q 'file format pei-x86-64' \
             || fail "imported DLL $dll is not PE32+ x86-64"
         [[ -n "$LICENSE_DIR" && -f "$LICENSE_DIR/$dll.LICENSE.txt" ]] \
             || fail "missing redistribution license $dll.LICENSE.txt in MZM_WINDOWS_LICENSE_DIR"
         cp "$source" "$STAGE/$dll"
         cp "$LICENSE_DIR/$dll.LICENSE.txt" "$STAGE/THIRD-PARTY-LICENSES/$dll.LICENSE.txt"
         QUEUE+=("$STAGE/$dll")
-    done < <(objdump -p "$binary" | sed -n 's/^[[:space:]]*DLL Name: //p')
+    done < <("$OBJDUMP" -p "$binary" | sed -n 's/^[[:space:]]*DLL Name: //p')
 done
 
 if find "$STAGE" -type f \( -iname '*.gba' -o -iname '*.agb' -o -iname '*.bin' \
