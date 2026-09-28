@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -6,6 +7,7 @@
 #include "runtime.h"
 #include "mzm_ram_dispatch.h"
 #include "mzm_milestone_probe.h"
+#include "mzm_log.h"
 
 #if defined(MZM_RECOMP_UI)
 #include "game_launcher_boot.h"
@@ -19,8 +21,8 @@ void print_usage() {
         "[--config <mzm-us.toml>] [runtime options]\n"
         "The ROM must match SHA-1 "
         "5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8.\n"
-        "With the optional recomp-ui build, launch with no ROM argument or "
-        "--launcher to open the graphical setup.\n");
+        "With the optional MZM launcher build, launch with no ROM argument or "
+        "--launcher to open graphical setup. --no-launcher skips it.\n");
 }
 
 }  // namespace
@@ -35,6 +37,7 @@ int main(int argc, char** argv) {
     }
 
     mzm_install_ram_dispatch_hook();
+    mzm::log_event("start");
 
     gbarecomp::RunOptions opts;
     mzm_configure_milestone_probe(opts);
@@ -53,8 +56,8 @@ int main(int argc, char** argv) {
     opts.rewind_history_seconds = 15;
     opts.rewind_capture_interval_frames = 15;
 
-    // Keep MZM's player-owned launcher state isolated and portable beside the
-    // executable. No ROM/BIOS/save content is copied into the repository.
+    // Keep compatibility with GBARecomp's existing per-game host filenames.
+    // The MZM launcher stores ROM/BIOS path references in the user config dir.
     opts.launcher_config_filename = "mzm-config.ini";
     opts.launcher_keybinds_filename = "mzm-keybinds.ini";
     opts.launcher_rom_cache_filename = "mzm-rom.cfg";
@@ -64,8 +67,10 @@ int main(int argc, char** argv) {
 
 #if defined(MZM_RECOMP_UI)
     std::vector<std::string> args(argv, argv + argc);
-    if (game_launcher_preboot(args, opts)) {
-        return 0;
+    const int launcher_result = game_launcher_preboot(args, opts);
+    if (launcher_result != 0) {
+        mzm::log_event(launcher_result == 1 ? "launcher_closed" : "launcher_error");
+        return launcher_result == 1 ? 0 : 1;
     }
 
     std::vector<char*> av;
@@ -80,5 +85,9 @@ int main(int argc, char** argv) {
 #endif
 
     mzm_report_milestone_probe();
+    if (const char* strict = std::getenv("GBARECOMP_STRICT_STATIC"); strict && *strict == '1')
+        mzm::log_event(rc == 0 ? "cpu_backend=static-recompiled strict_result=ok"
+                               : "cpu_backend_request=static-recompiled strict_result=error");
+    mzm::log_event(rc == 0 ? "closed result=ok" : "closed result=error");
     return rc;
 }
