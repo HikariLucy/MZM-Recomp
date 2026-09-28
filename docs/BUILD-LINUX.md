@@ -1,6 +1,6 @@
 # Linux Development and Build Workflow
 
-This document describes the intended reproducible Linux workflow. MZM-Recomp is currently in **M0**, so a complete playable build command does not exist yet.
+This document describes the reproducible Linux development workflow. MZM-Recomp has passed M0–M3 and is currently in **M4 compatibility**, with a playable native Linux host already demonstrated under strict-static enforcement.
 
 ## 1. Current local workspace model
 
@@ -200,3 +200,39 @@ echo "script exit=$?"
 ```
 
 Even if the script fails, the parent terminal should remain open and show its exit code.
+
+
+## 11. Optional graphical launcher
+
+The CLI-only host remains valid. To build the optional graphical launcher,
+initialize the pinned `recomp-ui` submodule:
+
+```bash
+cd "$HOME/proyectos/Recomp/MZM-Recomp"
+git submodule update --init --recursive recomp-ui
+./scripts/build-m1.sh
+```
+
+CMake reports:
+
+```text
+MZM-Recomp: recomp-ui launcher enabled
+```
+
+when the dependency is present.
+
+Launch with no explicit ROM argument:
+
+```bash
+./build-m1/MZMRecomp
+```
+
+or force the launcher even if the player previously selected "skip launcher":
+
+```bash
+./build-m1/MZMRecomp --launcher
+```
+
+Passing `--rom`, `--help`, headless/test arguments, or
+`GBARECOMP_NO_LAUNCHER=1` bypasses the UI and preserves the development and
+strict-static workflows.

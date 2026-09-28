@@ -48,7 +48,8 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Full-game compatibility | **PENDING** | M4 |
 | NES Metroid compatibility | **PENDING** | Dedicated M4 workstream |
 | Europe runtime support | **PENDING** | After USA bring-up proves architecture |
-| Enhancements | **PENDING** | M5 only after compatibility baseline |
+| Product shell / launcher | **EXPERIMENTAL** | Optional recomp-ui launcher integrated in parallel with M4; local build/UI validation pending |
+| Enhancements | **PENDING** | Gameplay/presentation enhancements remain M5; launcher/release shell is tracked separately |
 
 ## M0.2 result — decomp reproducibility confirmed
 

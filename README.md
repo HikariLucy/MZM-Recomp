@@ -29,6 +29,24 @@ The same session persisted a 32 KiB SRAM save, and a later strict-static process
 
 See [STATUS.md](STATUS.md) for the exact evidence-backed status.
 
+## Native launcher
+
+MZM-Recomp also has an optional `recomp-ui` product shell under active
+development. It provides a graphical ROM/BIOS setup flow and shared GBARecomp
+display, audio, input, save-state, rewind and fast-forward controls without
+changing the guest game logic.
+
+The launcher is intentionally separate from M4 compatibility qualification:
+strict-static CLI runs remain available and authoritative for evidence.
+
+Initialize the pinned UI dependency with:
+
+```bash
+git submodule update --init --recursive recomp-ui
+```
+
+See [docs/PRODUCT-SHELL.md](docs/PRODUCT-SHELL.md).
+
 ## Verified cartridge targets
 
 ### Primary target — USA

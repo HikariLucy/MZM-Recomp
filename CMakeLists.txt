@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(GBARECOMP_ROOT ""
     CACHE PATH "Path to the pinned gbarecomp checkout")
+set(RECOMP_UI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui"
+    CACHE PATH "Path to the pinned recomp-ui checkout")
+option(MZM_RECOMP_UI "Build the recomp-ui pre-boot launcher" ON)
 
 if(NOT GBARECOMP_ROOT)
     message(FATAL_ERROR
@@ -68,3 +71,47 @@ target_link_libraries(MZMRecomp PRIVATE
 target_compile_definitions(MZMRecomp PRIVATE
     GBARECOMP_WINDOW_TITLE="MZM-Recomp"
 )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Optional recomp-ui pre-boot launcher.
+#
+# The launcher is deliberately isolated from the generated guest corpus:
+# only this tiny wrapper is compiled with RECOMP_LAUNCHER/recomp-ui flags.
+# If the submodule is not initialized the native CLI build remains usable.
+# ─────────────────────────────────────────────────────────────────────
+if(MZM_RECOMP_UI)
+    if(EXISTS "${RECOMP_UI_ROOT}/recomp_ui.cmake")
+        include("${RECOMP_UI_ROOT}/recomp_ui.cmake")
+
+        add_library(mzm_launcher_ui STATIC
+            src/game_launcher_boot.cpp
+        )
+        target_include_directories(mzm_launcher_ui PRIVATE
+            "${GBARECOMP_ROOT}/src/runtime"
+            "${GBARECOMP_ROOT}/src/gba"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        )
+
+        recomp_target_launcher_ui(mzm_launcher_ui
+            CONSOLE gba
+        )
+
+        find_package(SDL2 REQUIRED)
+        target_link_libraries(mzm_launcher_ui PUBLIC SDL2::SDL2)
+        if(WIN32)
+            target_link_libraries(mzm_launcher_ui PUBLIC opengl32)
+        endif()
+
+        target_link_libraries(MZMRecomp PRIVATE mzm_launcher_ui)
+        set_property(SOURCE src/main.cpp APPEND PROPERTY
+            COMPILE_DEFINITIONS MZM_RECOMP_UI=1)
+
+        message(STATUS "MZM-Recomp: recomp-ui launcher enabled")
+    else()
+        message(WARNING
+            "MZM_RECOMP_UI=ON but recomp-ui is not initialized at "
+            "${RECOMP_UI_ROOT}; building CLI-only host. "
+            "Run: git submodule update --init --recursive recomp-ui")
+    endif()
+endif()
