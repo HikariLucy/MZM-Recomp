@@ -35,10 +35,7 @@ std::uint16_t milestone_input_frame(const gbarecomp::TouchFrameInfo*) {
     // happens after runtime initialization while remaining before the later
     // intro/title flow. 0x03FF is the inactive active-low GBA keypad mask:
     // this callback synthesizes no input and therefore does not change play.
-    if (!g_hook_installed) {
-        g_runtime_fn_entry_hook = &milestone_entry;
-        g_hook_installed = true;
-    }
+    mzm_arm_milestone_entry_hook();
     return 0x03FFu;
 }
 
@@ -48,6 +45,13 @@ bool env_enabled(const char* name) {
 }
 
 }  // namespace
+
+void mzm_arm_milestone_entry_hook() {
+    if (g_enabled && !g_hook_installed) {
+        g_runtime_fn_entry_hook = &milestone_entry;
+        g_hook_installed = true;
+    }
+}
 
 void mzm_configure_milestone_probe(gbarecomp::RunOptions& opts) {
     g_enabled = env_enabled("MZM_MILESTONE_TRACE");

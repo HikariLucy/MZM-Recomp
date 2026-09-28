@@ -1,4 +1,5 @@
 #include "mzm_ram_dispatch.h"
+#include "mzm_milestone_probe.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -51,6 +52,11 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
         if (!guest_bytes_match(pc, helper.source_start, helper.size)) {
             continue;
         }
+
+        // SRAM initialization occurs before the normal Intro/Title loop. If
+        // milestone tracing is enabled, this is an early post-run_game-reset
+        // point where the generic function-entry hook can be armed reliably.
+        mzm_arm_milestone_entry_hook();
 
         // The helper bodies are position-independent Thumb code. The runtime
         // bytes have been verified against the exact ROM source before we
