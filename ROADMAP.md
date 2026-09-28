@@ -213,6 +213,8 @@ self_heal_coverage=NOT_STATIC
 
 **Gate:** deterministic first recompiled execution with trace evidence. **PASSED 2026-09-28 (hybrid).**
 
+**M1 EXIT: PASSED — 2026-09-28.**
+
 ---
 
 ## M2 — Boot / title

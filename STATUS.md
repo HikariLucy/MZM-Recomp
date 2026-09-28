@@ -1,8 +1,9 @@
 # MZM-Recomp — Status
 
 **Last updated:** 2026-09-28  
-**Current phase:** M1 — Static bootstrap  
-**M0 verdict:** **PASSED / GO**
+**Current phase:** M2 — Boot / title  
+**M0 verdict:** **PASSED / GO**  
+**M1 verdict:** **PASSED — native hybrid execution demonstrated**
 
 This file is intentionally conservative. A capability is not marked complete because it "should work"; it is marked complete only when reproducible evidence exists.
 
@@ -229,3 +230,18 @@ self_heal_coverage=NOT_STATIC
 Nine misses are BIOS PCs and nine are high-IWRAM Thumb PCs around `0x03007D08..0x03007D90`. The high-IWRAM cluster is consistent with the previously identified stack-local executable SRAM-helper risk, but that attribution remains pending fragment/source review.
 
 M1B is **CONFIRMED / PASSED**. Strict-static closure is not claimed.
+
+
+## M1 exit decision
+
+**M1 — Static bootstrap: PASSED.**
+
+The generated MZM corpus compiles into a native Linux host and the first interactive runtime session executed through the static-recompiled backend for tens of thousands of frames. Hybrid/self-heal coverage was used and reported transparently.
+
+The project now enters **M2 — Boot / title**, where the target is to qualify the route:
+
+```text
+reset → startup → InitializeGame → intro → title
+```
+
+first in hybrid mode and later under the strict-static gate.

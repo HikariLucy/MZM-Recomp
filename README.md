@@ -10,11 +10,11 @@ The project aims to run the original game logic as native host code using [GBARe
 
 ## Project status
 
-**Current phase:** M1 — Static bootstrap
+**Current phase:** M2 — Boot / title
 
 **M0 verdict:** **PASSED / GO**
 
-M0 feasibility is complete and the project has entered M1 static bootstrap. Native gameplay is **not yet claimed**: M1 must first compile the generated corpus into a host executable and execute verified recompiled MZM code.
+M0 feasibility and M1 static bootstrap are complete. The project has entered M2 boot/title qualification. A native Linux host now compiles and executes MZM through GBARecomp, but the demonstrated route is still hybrid (`self_heal_coverage=NOT_STATIC`), so strict-static boot/title and native gameplay are **not yet claimed**.
 
 See [STATUS.md](STATUS.md) for the exact evidence-backed status.
 
