@@ -6,6 +6,7 @@ WORK="${WORK:-$HOME/proyectos/Recomp/Metroid-ZeroMissionRecomp}"
 GBARECOMP="${GBARECOMP:-$WORK/_m0/upstream/gbarecomp}"
 BUILD_DIR="${MZM_BUILD_DIR:-$REPO/build-m1}"
 JOBS="${MZM_BUILD_JOBS:-4}"
+BIOS_GENERATED="${MZM_BIOS_GENERATED:-$REPO/.local/generated-bios}"
 
 if [[ ! -f "$REPO/generated/recompiled.h" ]]; then
     echo "generated corpus not found; run scripts/generate-m1.sh first" >&2
@@ -14,7 +15,7 @@ fi
 
 echo "=== M1A CONFIGURE HOST ==="
 
-cmake     -S "$REPO"     -B "$BUILD_DIR"     -DGBARECOMP_ROOT="$GBARECOMP"     -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake     -S "$REPO"     -B "$BUILD_DIR"     -DGBARECOMP_ROOT="$GBARECOMP"     -DGBARECOMP_GENERATED_BIOS_DIR="$BIOS_GENERATED"     -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 echo
 echo "=== M1A BUILD HOST ==="

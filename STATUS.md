@@ -37,6 +37,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | M1 minimal host scaffold | **CONFIRMED** | CMake runner + minimal `run_game` host + reproducible generation/build scripts committed and compiled successfully |
 | M1A host build | **CONFIRMED** | `MZMRecomp` linked successfully as a Linux x86-64 ELF; 16 generated shards compiled without hand edits; `--help` runs |
 | First native MZM execution | **CONFIRMED** | M1B hybrid run completed successfully with static-recompiled backend, 5,193,795 native calls, ~43.9k presented frames, `unmapped=0`, `io_unhandled=0`; 18 dispatch misses were bridged/self-healed and remain static-coverage debt |
+| M2A miss classification | **EXPERIMENTAL** | 18 first-run misses split into 9 BIOS roots already covered by upstream BIOS config and 9 high-IWRAM Thumb roots strongly consistent with MZM stack-local SRAM helpers; BIOS static generation is next |
 | Boot/intro/title | **PENDING** | M2 |
 | Controllable Samus | **PENDING** | M3 |
 | Strict-static gameplay route | **PENDING** | M3 |
