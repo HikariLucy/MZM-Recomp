@@ -1,0 +1,50 @@
+# User-supplied copyrighted inputs
+*.gba
+*.bin
+*.bios
+*baserom*
+roms/
+ROMs/
+bios/
+BIOS/
+
+# Generated ROM-derived output
+generated/
+generated-*/
+recomp/generated/
+*.elf
+*.gba.map
+
+# Saves / runtime state
+*.sav
+*.srm
+*.ss0
+*.ss1
+savestates/
+
+# Local M0 workspace and evidence
+_m0/
+.local/
+work/
+upstream/
+
+# Build output
+build/
+build-*/
+out/
+dist/
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+
+# Tool/editor noise
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
