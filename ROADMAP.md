@@ -128,8 +128,8 @@ Current findings:
 - [x] Identify mutable same-PC `hazeCode` as a strict-static engine gap.
 - [x] Pin and qualify boot-time fixed executable RAM copies (IRQ + audio A/B/C).
 - [ ] Pin remaining M0/M3-relevant fixed executable RAM copies (clipdata; classify later/deferred copies separately).
-- [ ] Assign implementation ownership/acceptance criteria for mosaic.
-- [ ] Assign implementation ownership/acceptance criteria for mutable code-copy variants.
+- [x] Assign implementation ownership/acceptance criteria for mosaic (generic GBARecomp PPU).
+- [x] Assign implementation ownership/acceptance criteria for mutable code-copy variants (generic GBARecomp dispatch/code-copy support; hybrid allowed during bring-up).
 - [ ] Close M0.6 matrix.
 
 Every required subsystem is classified as:
