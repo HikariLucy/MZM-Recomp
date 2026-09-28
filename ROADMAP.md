@@ -57,8 +57,8 @@ Current M0.3 progress:
 - [x] Confirm ARM IRQ handler `IntrMain` at `0x08000104`.
 - [x] Confirm ARM→Thumb handoff to `agbmain` via pointer `0x0800023D`.
 - [x] Extract the initial boot/runtime symbol set from the rebuilt ELF/map.
-- [ ] Derive ISA state for the wider function set using ELF ARM mapping symbols.
-- [ ] Produce a repeatable machine-readable address → ISA → symbol → object/source map.
+- [x] Derive ISA state for the wider function set using ELF ARM mapping symbols.
+- [x] Produce a repeatable machine-readable address → ISA → symbol → object/source map.
 - [ ] Add title/file-select and main-loop HALT/VBlank anchors.
 - [ ] Close M0.3 with reproducible mapping output.
 
