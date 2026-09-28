@@ -31,7 +31,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
 | Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
 | MZM cartridge static-analysis scan | **CONFIRMED** | First configured discovery/codegen pass succeeded: 28,346 translation roots, 49 ARM / 28,297 Thumb, 9,540 indirect transfers, 335 auto jump tables / 8,675 targets, `undefined=0`; IRQ IWRAM code-copy emitted and dispatched |
-| Hardware support matrix qualification | **PENDING** | M0.6 |
+| Hardware support matrix qualification | **EXPERIMENTAL** | Core boot/gameplay hardware is represented, but M0.6 identified two concrete engine gaps: mutable same-PC RAM code variants (haze) and PPU mosaic rendering; additional fixed executable RAM copies still need exact-address capture/configuration |
 | First generated native C++ | **PENDING** | M1 |
 | First native MZM instruction executed | **PENDING** | M1 |
 | Boot/intro/title | **PENDING** | M2 |
@@ -95,7 +95,20 @@ The first configured `gba_recompile` discovery/codegen run then succeeded with `
 
 The finder-level "function" count is not a source-function count: GBARecomp materializes direct branch/case/control-flow roots as translation units. The 2,722 decomp functions remain the semantic function inventory.
 
-M0.5 is therefore **CONFIRMED** as a static feasibility gate. Runtime/static-closure validation remains future work; the next active work package is **M0.6 — hardware/runtime support matrix qualification**.
+M0.5 is therefore **CONFIRMED** as a static feasibility gate.
+
+## M0.6 progress — hardware/runtime matrix
+
+The pinned runtime covers the major hardware surfaces needed for boot/title/gameplay: ARM/Thumb execution and interworking, GBA memory, IRQ/VBlank/HBlank scheduling, HALT wake-up, immediate/timed/FIFO DMA, timers, SRAM, keypad, tile/affine PPU modes used by normal MZM, windows/blending, and Direct Sound/PSG audio.
+
+Two bounded engine gaps have been identified:
+
+1. **Mutable same-PC executable RAM code.** MZM reuses the same `hazeCode` RAM buffer for several different ROM source functions. Current fixed `[[code_copy]]` mappings resolve a runtime PC to one source mapping, so strict-static execution of all haze variants needs engine work.
+2. **PPU mosaic rendering.** MZM actively uses MOSAIC in gameplay/sprite effects, while the pinned GBARecomp PPU does not currently render mosaic.
+
+Additional fixed code copies (audio A/B/C, Chozodia HBlank, and the clipdata helper) are framework-supported but still need their exact runtime addresses captured and added to configuration.
+
+M0.6 remains **EXPERIMENTAL** until that executable-RAM inventory is pinned and the two gaps have an explicit implementation/deferral plan.
 
 ## Confirmed cartridge identities
 

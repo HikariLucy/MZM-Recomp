@@ -113,6 +113,24 @@ Analyze the verified USA ROM and classify:
 
 ### M0.6 — Runtime support matrix
 
+Current findings:
+
+- [x] ARM/Thumb/interworking support present.
+- [x] IRQ/VBlank/HBlank + HALT wake path present; MZM runtime validation still required.
+- [x] Immediate, VBlank/HBlank-timed and sound-FIFO DMA present.
+- [x] Timers 0..3 and IRQ/cascade support present.
+- [x] SRAM and keypad support present.
+- [x] Normal MZM PPU mode requirements fit supported tile/affine modes 0/1.
+- [x] Windows, alpha blending and brightness paths are present.
+- [x] PSG + Direct Sound FIFO A/B support present.
+- [x] Serial/link infrastructure exists; MZM Fusion-link validation deferred to M4.
+- [x] Identify PPU mosaic as an MZM-relevant engine gap.
+- [x] Identify mutable same-PC `hazeCode` as a strict-static engine gap.
+- [ ] Pin exact runtime/source ranges for all fixed executable RAM copies.
+- [ ] Assign implementation ownership/acceptance criteria for mosaic.
+- [ ] Assign implementation ownership/acceptance criteria for mutable code-copy variants.
+- [ ] Close M0.6 matrix.
+
 Every required subsystem is classified as:
 
 - **SUPPORTED**
