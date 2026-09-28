@@ -84,10 +84,10 @@ Initial progress:
 - [x] Import the byte-matching decomp symbols and data layout.
 - [x] Confirm imported function/data ranges are non-contradictory (`dropped-in-data=0`).
 - [x] Resolve the startup IRQ ROM→IWRAM code copy from decomp symbols.
-- [ ] Run the first configured GBARecomp discovery/codegen pass.
-- [ ] Classify indirect transfers, undefined instructions, auto jump tables, and static roots.
-- [ ] Identify additional code copies/dynamic executable regions.
-- [ ] Determine whether any normal boot/title/gameplay construct is fundamentally unsupported.
+- [x] Run the first configured GBARecomp discovery/codegen pass.
+- [x] Classify indirect transfers, undefined instructions, auto jump tables, and static roots.
+- [x] Identify known dynamic executable regions: startup IRQ copy is modeled; NES Metroid runtime-loaded code is explicitly deferred to M4.
+- [x] Determine whether any normal boot/title/gameplay construct is fundamentally unsupported by static analysis: none found in the first discovery/codegen pass.
 
 Analyze the verified USA ROM and classify:
 
@@ -109,7 +109,7 @@ Analyze the verified USA ROM and classify:
 - serial/link paths;
 - dynamically installed code.
 
-**Gate:** no fundamental unsupported execution model is discovered for the normal Zero Mission boot/title/gameplay path.
+**Gate:** no fundamental unsupported execution model is discovered for the normal Zero Mission boot/title/gameplay path. **PASSED 2026-09-28.**
 
 ### M0.6 — Runtime support matrix
 

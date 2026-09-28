@@ -30,7 +30,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Rebuild MZM USA from decomp | **CONFIRMED** | Pinned `metroidret/mzm` rebuilt `mzm_us.gba` with the expected SHA-1 and `cmp` confirmed byte-for-byte identity |
 | Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
 | Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
-| MZM cartridge static-analysis scan | **EXPERIMENTAL** | `gba_scan` passed (`ok=1`, BMXE, SRAM); byte-matching decomp import produced 2722 function seeds with `dropped-in-data=0` and one confirmed IRQ code-copy; first GBARecomp discovery run still pending |
+| MZM cartridge static-analysis scan | **CONFIRMED** | First configured discovery/codegen pass succeeded: 28,346 translation roots, 49 ARM / 28,297 Thumb, 9,540 indirect transfers, 335 auto jump tables / 8,675 targets, `undefined=0`; IRQ IWRAM code-copy emitted and dispatched |
 | Hardware support matrix qualification | **PENDING** | M0.6 |
 | First generated native C++ | **PENDING** | M1 |
 | First native MZM instruction executed | **PENDING** | M1 |
@@ -91,7 +91,11 @@ M0.4 is therefore **CONFIRMED**.
 
 The GBARecomp decomp importer then consumed the byte-matching MZM ELF/sections/link-map evidence and produced 2722 function seeds: 8 ARM and 2714 Thumb, with **zero functions dropped for colliding with authoritative data ranges**. It also resolved the known IRQ ROM→IWRAM copy as `0x03000C7C <- 0x08000104`, size `0x200`.
 
-M0.5 remains **EXPERIMENTAL** until the first configured `gba_recompile` discovery run reports control-flow/undefined-instruction statistics and the resulting gaps are classified.
+The first configured `gba_recompile` discovery/codegen run then succeeded with `undefined=0`, emitted 28,346 translation roots, discovered 335 automatic jump tables with 8,675 targets, and materialized the copied IRQ entry in the dispatch table at `0x03000C7C`.
+
+The finder-level "function" count is not a source-function count: GBARecomp materializes direct branch/case/control-flow roots as translation units. The 2,722 decomp functions remain the semantic function inventory.
+
+M0.5 is therefore **CONFIRMED** as a static feasibility gate. Runtime/static-closure validation remains future work; the next active work package is **M0.6 — hardware/runtime support matrix qualification**.
 
 ## Confirmed cartridge identities
 
