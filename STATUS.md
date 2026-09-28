@@ -28,7 +28,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | `mstan/gbarecomp` baseline identified | **CONFIRMED** | Pin: `e7728148c6829ba526f682876430a0c9022dc6c0` |
 | `agbcc` baseline identified | **CONFIRMED** | Pin: `59b966ed1b8f371856dcf99f1546c2fe89c678ca` |
 | Rebuild MZM USA from decomp | **CONFIRMED** | Pinned `metroidret/mzm` rebuilt `mzm_us.gba` with the expected SHA-1 and `cmp` confirmed byte-for-byte identity |
-| Export semantic symbol/address map | **PENDING** | M0.3 |
+| Export semantic symbol/address map | **EXPERIMENTAL** | Initial ELF/map extraction produced 23,503 defined symbols and confirmed the first boot/runtime anchors; automatic ISA/source mapping is now being formalized |
 | Build/qualify GBARecomp on Linux | **PENDING** | M0.4 |
 | MZM cartridge static-analysis scan | **PENDING** | M0.5 |
 | Hardware support matrix qualification | **PENDING** | M0.6 |
