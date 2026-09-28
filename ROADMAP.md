@@ -223,6 +223,13 @@ self_heal_coverage=NOT_STATIC
 
 ### M2A — Hybrid bring-up
 
+- [x] Link statically recompiled BIOS and remove BIOS fallback misses.
+- [x] Classify high-IWRAM misses as stack-local SRAM copied helpers.
+- [x] Implement byte-verified transient-RAM canonicalization.
+- [x] Re-run from a cold self-heal cache with `dispatch_misses=0`.
+- [x] Confirm `interpreted_insns=0`, `unmapped=0`, and `io_unhandled=0`.
+- [ ] Capture semantic Intro/Title milestone hits under explicit strict-static enforcement.
+
 Qualify:
 
 - initialization;

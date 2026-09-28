@@ -1,7 +1,7 @@
 # M2A Evidence — Static BIOS and Stack-local SRAM Code
 
 **Date:** 2026-09-28  
-**State:** **IMPLEMENTED / VALIDATION PENDING**
+**State:** **CONFIRMED / VALIDATED**
 
 ## Static BIOS result
 
@@ -124,4 +124,20 @@ A fresh run with no overlay cache must show:
 - `unmapped=0`;
 - `io_unhandled=0`.
 
-Only then may this route advance toward strict-static qualification.
+Validation result:
+
+```text
+cpu_backend=static-recompiled
+unmapped=0
+io_unhandled=0
+ppu_frames=4131
+frames_presented=4129
+self_heal_coverage=FULLY_STATIC
+dispatch_misses=0
+interpreted_insns=0
+healed_native=0
+```
+
+The static BIOS remained miss-free and every observed stack-local SRAM helper dispatch was handled by the byte-verified RAM canonicalizer. No new unexpected dispatch miss appeared.
+
+This closes the SRAM/BIOS coverage problem for the tested route and advances M2 to explicit strict-static title qualification.

@@ -3,6 +3,7 @@
 
 #include "runtime.h"
 #include "mzm_ram_dispatch.h"
+#include "mzm_milestone_probe.h"
 
 namespace {
 
@@ -28,9 +29,12 @@ int main(int argc, char** argv) {
     mzm_install_ram_dispatch_hook();
 
     gbarecomp::RunOptions opts;
+    mzm_configure_milestone_probe(opts);
     opts.builtin_game_name = "Metroid: Zero Mission";
     opts.builtin_rom_sha1 = "5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8";
     opts.launcher_region = "USA";
 
-    return gbarecomp::run_game(argc, argv, opts);
+    const int rc = gbarecomp::run_game(argc, argv, opts);
+    mzm_report_milestone_probe();
+    return rc;
 }

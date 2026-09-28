@@ -37,7 +37,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | M1 minimal host scaffold | **CONFIRMED** | CMake runner + minimal `run_game` host + reproducible generation/build scripts committed and compiled successfully |
 | M1A host build | **CONFIRMED** | `MZMRecomp` linked successfully as a Linux x86-64 ELF; 16 generated shards compiled without hand edits; `--help` runs |
 | First native MZM execution | **CONFIRMED** | M1B hybrid run completed successfully with static-recompiled backend, 5,193,795 native calls, ~43.9k presented frames, `unmapped=0`, `io_unhandled=0`; 18 dispatch misses were bridged/self-healed and remain static-coverage debt |
-| M2A miss classification | **EXPERIMENTAL** | Static BIOS linkage removed every BIOS miss; 8 remaining high-IWRAM Thumb misses are now proven to arise from transient stack-local SRAM helper execution; byte-verified RAM canonicalizer implementation committed for validation |
+| M2A static coverage | **CONFIRMED** | Cache-free run with recompiled BIOS + byte-verified SRAM stack canonicalizer reports `FULLY_STATIC`, `dispatch_misses=0`, `interpreted_insns=0`, `unmapped=0`, `io_unhandled=0`; explicit strict-static/title milestone run is next |
 | Boot/intro/title | **PENDING** | M2 |
 | Controllable Samus | **PENDING** | M3 |
 | Strict-static gameplay route | **PENDING** | M3 |
@@ -271,3 +271,29 @@ SramCheckInternal          0x0800529C size=0x30 Thumb
 and dispatches their already-generated native canonical translations.
 
 Validation is still pending; strict-static is not claimed until a fresh cache-free run reports zero unexpected misses.
+
+
+## M2A static-coverage result
+
+The first cache-free run after enabling the byte-verified transient-RAM canonicalizer completed with:
+
+```text
+cpu_backend=static-recompiled
+unmapped=0
+io_unhandled=0
+ppu_frames=4131
+frames_presented=4129
+self_heal_coverage=FULLY_STATIC
+dispatch_misses=0
+interpreted_insns=0
+healed_native=0
+```
+
+This validates the SRAM stack-code solution and proves that, for the tested session, neither BIOS nor cartridge/RAM execution required interpreter fallback or self-healed overlays.
+
+This is a static-coverage result, not yet the formal M2B title-route verdict. M2B still requires:
+
+1. an explicit `GBARECOMP_STRICT_STATIC=1` run; and
+2. objective evidence that the tested route reaches `IntroHandler` and `TitleScreenHandler`.
+
+An optional `MZM_MILESTONE_TRACE=1` runner probe records those semantic anchors without synthesizing input.

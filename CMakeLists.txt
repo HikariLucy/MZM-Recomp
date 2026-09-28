@@ -34,6 +34,7 @@ endif()
 add_executable(MZMRecomp
     src/main.cpp
     src/mzm_ram_dispatch.cpp
+    src/mzm_milestone_probe.cpp
     ${GAME_GENERATED_SOURCES}
 )
 
