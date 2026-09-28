@@ -126,7 +126,8 @@ Current findings:
 - [x] Serial/link infrastructure exists; MZM Fusion-link validation deferred to M4.
 - [x] Identify PPU mosaic as an MZM-relevant engine gap.
 - [x] Identify mutable same-PC `hazeCode` as a strict-static engine gap.
-- [ ] Pin exact runtime/source ranges for all fixed executable RAM copies.
+- [x] Pin and qualify boot-time fixed executable RAM copies (IRQ + audio A/B/C).
+- [ ] Pin remaining M0/M3-relevant fixed executable RAM copies (clipdata; classify later/deferred copies separately).
 - [ ] Assign implementation ownership/acceptance criteria for mosaic.
 - [ ] Assign implementation ownership/acceptance criteria for mutable code-copy variants.
 - [ ] Close M0.6 matrix.

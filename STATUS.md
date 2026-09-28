@@ -31,7 +31,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
 | Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
 | MZM cartridge static-analysis scan | **CONFIRMED** | First configured discovery/codegen pass succeeded: 28,346 translation roots, 49 ARM / 28,297 Thumb, 9,540 indirect transfers, 335 auto jump tables / 8,675 targets, `undefined=0`; IRQ IWRAM code-copy emitted and dispatched |
-| Hardware support matrix qualification | **EXPERIMENTAL** | Core boot/gameplay hardware is represented, but M0.6 identified two concrete engine gaps: mutable same-PC RAM code variants (haze) and PPU mosaic rendering; additional fixed executable RAM copies still need exact-address capture/configuration |
+| Hardware support matrix qualification | **EXPERIMENTAL** | Boot IRQ + audio executable-RAM copies are now modeled and emitted (`code_copies=4`, `undefined=0`); remaining M0.6 work is clipdata/fixed-copy inventory plus explicit plans for mutable `hazeCode` and PPU mosaic |
 | First generated native C++ | **PENDING** | M1 |
 | First native MZM instruction executed | **PENDING** | M1 |
 | Boot/intro/title | **PENDING** | M2 |
@@ -106,7 +106,13 @@ Two bounded engine gaps have been identified:
 1. **Mutable same-PC executable RAM code.** MZM reuses the same `hazeCode` RAM buffer for several different ROM source functions. Current fixed `[[code_copy]]` mappings resolve a runtime PC to one source mapping, so strict-static execution of all haze variants needs engine work.
 2. **PPU mosaic rendering.** MZM actively uses MOSAIC in gameplay/sprite effects, while the pinned GBARecomp PPU does not currently render mosaic.
 
-Additional fixed code copies (audio A/B/C, Chozodia HBlank, and the clipdata helper) are framework-supported but still need their exact runtime addresses captured and added to configuration.
+The three boot-time audio copies are now qualified:
+`gSoundCodeA 0x03003B90 <- 0x08004464`,
+`gSoundCodeB 0x030041EC <- 0x08004310`,
+and `gSoundCodeC 0x03004294 <- 0x080043B4`.
+With `IntrMain -> gInterruptCode`, the regenerated corpus reports `code_copies=4`, `undefined=0`, and successful code generation.
+
+Remaining executable-RAM inventory work is centered on the clipdata helper for gameplay, the mutable same-PC haze buffer, and later/deferred Chozodia/NES paths.
 
 M0.6 remains **EXPERIMENTAL** until that executable-RAM inventory is pinned and the two gaps have an explicit implementation/deferral plan.
 
