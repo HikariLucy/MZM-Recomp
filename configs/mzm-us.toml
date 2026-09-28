@@ -1,0 +1,23 @@
+# Metroid: Zero Mission (USA, BMXE, revision 0)
+# M0.5 static-analysis baseline for the verified 8 MiB USA cartridge.
+#
+# This is deliberately minimal. Reviewed data ranges, decomp function seeds,
+# and the confirmed IRQ code copy are supplied by the generated
+# symbols/BMXE_symbols.toml overlay. Runtime-only settings are added later.
+
+[program]
+name = "Metroid: Zero Mission (USA)"
+id = "BMXE"
+load_address = 0x08000000
+size = 0x00800000
+entry_pc = 0x08000000
+
+# We already have a byte-matching decomp with authoritative function seeds.
+# Prefer explicit evidence over speculative pointer-looking literals.
+speculative_literal_harvest = false
+
+# Stable sharding keeps generation/build iterations practical.
+codegen_shards = 16
+
+[identity]
+sha1 = "5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8"

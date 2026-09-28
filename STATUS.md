@@ -30,7 +30,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Rebuild MZM USA from decomp | **CONFIRMED** | Pinned `metroidret/mzm` rebuilt `mzm_us.gba` with the expected SHA-1 and `cmp` confirmed byte-for-byte identity |
 | Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
 | Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
-| MZM cartridge static-analysis scan | **PENDING** | M0.5 |
+| MZM cartridge static-analysis scan | **EXPERIMENTAL** | `gba_scan` passed (`ok=1`, BMXE, SRAM); byte-matching decomp import produced 2722 function seeds with `dropped-in-data=0` and one confirmed IRQ code-copy; first GBARecomp discovery run still pending |
 | Hardware support matrix qualification | **PENDING** | M0.6 |
 | First generated native C++ | **PENDING** | M1 |
 | First native MZM instruction executed | **PENDING** | M1 |
@@ -83,7 +83,15 @@ gba_scan: OK
 bios_smoke: OK
 ```
 
-M0.4 is therefore **CONFIRMED**. The next active work package is **M0.5 — MZM cartridge static-analysis scan**.
+M0.4 is therefore **CONFIRMED**.
+
+## M0.5 progress — cartridge scan and decomp import
+
+`gba_scan` accepted the verified USA ROM and reported a valid Nintendo header, entry branch to `0x080000C0`, game code `BMXE`, and SRAM save hardware identified by `SRAM_V`.
+
+The GBARecomp decomp importer then consumed the byte-matching MZM ELF/sections/link-map evidence and produced 2722 function seeds: 8 ARM and 2714 Thumb, with **zero functions dropped for colliding with authoritative data ranges**. It also resolved the known IRQ ROM→IWRAM copy as `0x03000C7C <- 0x08000104`, size `0x200`.
+
+M0.5 remains **EXPERIMENTAL** until the first configured `gba_recompile` discovery run reports control-flow/undefined-instruction statistics and the resulting gaps are classified.
 
 ## Confirmed cartridge identities
 

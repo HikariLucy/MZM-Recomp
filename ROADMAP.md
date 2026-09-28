@@ -77,6 +77,18 @@ Current M0.3 progress:
 
 ### M0.5 — MZM cartridge analysis
 
+Initial progress:
+
+- [x] Run `gba_scan` against the verified USA ROM.
+- [x] Confirm cartridge entry/header/save signature through GBARecomp.
+- [x] Import the byte-matching decomp symbols and data layout.
+- [x] Confirm imported function/data ranges are non-contradictory (`dropped-in-data=0`).
+- [x] Resolve the startup IRQ ROM→IWRAM code copy from decomp symbols.
+- [ ] Run the first configured GBARecomp discovery/codegen pass.
+- [ ] Classify indirect transfers, undefined instructions, auto jump tables, and static roots.
+- [ ] Identify additional code copies/dynamic executable regions.
+- [ ] Determine whether any normal boot/title/gameplay construct is fundamentally unsupported.
+
 Analyze the verified USA ROM and classify:
 
 - ARM/Thumb code roots;
