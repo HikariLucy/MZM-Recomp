@@ -27,7 +27,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | `metroidret/mzm` baseline identified | **CONFIRMED** | Pin: `43b7fd52f552e4d38c1521ff9d4df5ee57e61493` |
 | `mstan/gbarecomp` baseline identified | **CONFIRMED** | Pin: `e7728148c6829ba526f682876430a0c9022dc6c0` |
 | `agbcc` baseline identified | **CONFIRMED** | Pin: `59b966ed1b8f371856dcf99f1546c2fe89c678ca` |
-| Rebuild MZM USA from decomp | **BLOCKED** | Extraction completed, but `agbcc` and the MZM build stopped because `arm-none-eabi-as` / `arm-none-eabi-ar` are missing from the Linux toolchain |
+| Rebuild MZM USA from decomp | **CONFIRMED** | Pinned `metroidret/mzm` rebuilt `mzm_us.gba` with the expected SHA-1 and `cmp` confirmed byte-for-byte identity |
 | Export semantic symbol/address map | **PENDING** | M0.3 |
 | Build/qualify GBARecomp on Linux | **PENDING** | M0.4 |
 | MZM cartridge static-analysis scan | **PENDING** | M0.5 |
@@ -42,23 +42,19 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Europe runtime support | **PENDING** | After USA bring-up proves architecture |
 | Enhancements | **PENDING** | M5 only after compatibility baseline |
 
-## Current blocker — M0.2
+## M0.2 result — decomp reproducibility confirmed
 
-The pinned upstreams were cloned correctly and the MZM extractor completed. The current Linux host is missing ARM binutils commands required by both `agbcc` and the decomp build:
+The initial host-toolchain blocker was resolved by installing the missing ARM binutils. The pinned decomp then completed successfully and produced a byte-identical USA ROM reconstruction.
 
 ```text
-arm-none-eabi-as
-arm-none-eabi-ar
+MZM commit: 43b7fd52f552e4d38c1521ff9d4df5ee57e61493
+Expected SHA-1: 5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8
+Original SHA-1: 5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8
+Built SHA-1:    5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8
+BYTE_IDENTICAL: YES
 ```
 
-Observed consequences:
-
-- `agbcc/libgcc` could not produce `libgcc1.a`;
-- the MZM build later failed while assembling `asm/audio_internal.o`;
-- `mzm_us.gba` was therefore not produced;
-- the byte-identical M0.2 gate remains open.
-
-This is a **host dependency blocker**, not evidence of an MZM or GBARecomp incompatibility.
+M0.2 is therefore **CONFIRMED**. The next active work package is **M0.3 — semantic address/symbol mapping**.
 
 ## Confirmed cartridge identities
 

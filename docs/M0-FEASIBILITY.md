@@ -190,29 +190,30 @@ If these conditions pass, the project moves from feasibility into M1 implementat
 | ID | Work package | State |
 |---|---|---|
 | M0.1 | ROM identity | **CONFIRMED** |
-| M0.2 | Decomp reproducibility | **BLOCKED — host ARM binutils missing** |
+| M0.2 | Decomp reproducibility | **CONFIRMED** |
 | M0.3 | Semantic address/symbol map | PENDING |
 | M0.4 | GBARecomp Linux qualification | PENDING |
 | M0.5 | MZM static-analysis scan | PENDING |
 | M0.6 | Hardware support matrix | PENDING |
 | M0.7 | Duplicate/upstream positioning | **Initial audit confirmed** |
 
-## 10. Current M0.2 execution result
+## 10. M0.2 execution result
 
-The first Linux reproducibility attempt reached the extractor successfully and confirmed the intended upstream pins, but did not produce `mzm_us.gba`.
+The first attempt exposed a host-only dependency issue: ARM binutils were missing. After installing the required tools, the pinned decomp build completed successfully.
 
-The failure is currently attributed to missing host toolchain executables:
+Final reproducibility result:
 
 ```text
-arm-none-eabi-as: not found
-arm-none-eabi-ar: not found
+MZM_COMMIT=43b7fd52f552e4d38c1521ff9d4df5ee57e61493
+EXPECTED_SHA1=5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8
+ORIGINAL_SHA1=5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8
+BUILT_SHA1=5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8
+BYTE_IDENTICAL=YES
 ```
 
-That caused the `agbcc` library build to fail and later caused the MZM build to stop on `asm/audio_internal.o`.
+The build exited successfully and `cmp` confirmed that the rebuilt `mzm_us.gba` is byte-for-byte identical to the verified USA source cartridge image.
 
-Interpretation: **environment/toolchain blocker only**. No conclusion about MZM static-recompilation feasibility should be drawn from this failure.
-
-Next gate action: install/verify the ARM binutils package, rebuild `agbcc`, rerun the MZM build, then require SHA-1 equality and byte-for-byte identity.
+**Interpretation:** M0.2 passes. The decomp/toolchain baseline is reproducible on the Linux development host and can now be used as the semantic source for M0.3.
 
 ## 11. Final M0 decision format
 

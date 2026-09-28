@@ -16,15 +16,15 @@ The roadmap is organized around **evidence gates**, not percentages. A milestone
 
 ### M0.2 — Decomp reproducibility
 
-- [ ] Pin `metroidret/mzm`.
-- [ ] Pin `agbcc`.
-- [ ] Build required tooling on Linux.
-- [ ] Rebuild the USA target from the verified baserom.
-- [ ] Confirm built `mzm_us.gba` SHA-1 equals the verified USA SHA-1.
-- [ ] Confirm `cmp` byte-for-byte identity.
-- [ ] Save non-copyrighted evidence: tool versions, commit pins, hashes, pass/fail result.
+- [x] Pin `metroidret/mzm`.
+- [x] Pin `agbcc`.
+- [x] Build required tooling on Linux.
+- [x] Rebuild the USA target from the verified baserom.
+- [x] Confirm built `mzm_us.gba` SHA-1 equals the verified USA SHA-1.
+- [x] Confirm `cmp` byte-for-byte identity.
+- [x] Save non-copyrighted evidence: tool versions, commit pins, hashes, pass/fail result.
 
-**Gate:** byte-identical USA reconstruction on the development Linux host.
+**Gate:** byte-identical USA reconstruction on the development Linux host. **PASSED 2026-09-28.**
 
 ### M0.3 — Semantic map
 
