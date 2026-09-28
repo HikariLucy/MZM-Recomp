@@ -1,30 +1,42 @@
 # MZM-Recomp Product Shell
 
-**State:** launcher foundation implemented; local validation pending.
+**State:** **ACTIVE / EXPERIMENTAL**
 
-This workstream runs in parallel with M4 compatibility. It improves the native
-PC experience without changing the guest cartridge logic or relaxing the
-strict-static validation path.
+This workstream improves the player-facing native application without changing
+the guest game's logic or weakening the strict-static compatibility path.
 
-## P1 — Launcher foundation
+It runs in parallel with M4 compatibility.
 
-The launcher uses GBARecomp's shared `recomp-ui` seam rather than a custom
-frontend.
+## Principles
 
-Initial surface:
+1. The faithful 240×160 game path remains the validation baseline.
+2. ROM and BIOS are always user-supplied.
+3. The launcher may remember paths, but never copies those inputs into Git.
+4. Strict-static/CLI workflows remain available for engineering validation.
+5. Host-side quality-of-life features must remain separable from guest behavior.
+6. Game-specific rendering enhancements such as adaptive widescreen require
+   their own later compatibility work; they are not part of the initial shell.
 
-- verified MZM USA ROM picker;
-- verified retail GBA BIOS picker;
-- existing SRAM save detection;
-- window scale/fullscreen;
-- GBA screen color profiles;
-- audio volume;
-- keyboard/controller remapping;
-- save-state slots;
-- rewind/fast-forward assist tools;
-- resizable native presentation.
+## P1 — Graphical launcher
 
-The launcher persists only player-owned configuration beside the executable:
+The project uses GBARecomp's shared `recomp-ui` pre-boot launcher rather than
+maintaining a bespoke frontend.
+
+Current integration:
+
+- pinned `recomp-ui` git submodule;
+- isolated launcher translation unit;
+- launcher-enabled CMake option;
+- verified MZM USA ROM SHA-1 baked into the runner;
+- persistent player-owned ROM/BIOS path caches;
+- freely resizable host window;
+- shared Assist Tools enabled;
+- 9 save-state slots;
+- 4× default fast-forward;
+- 15-second rewind history;
+- ordinary CLI path preserved.
+
+Player-owned launcher state:
 
 ```text
 mzm-config.ini
@@ -33,45 +45,69 @@ mzm-rom.cfg
 mzm-bios.cfg
 ```
 
-No ROM, BIOS, save, or generated ROM-derived source is committed.
+These are runtime files, not repository content.
 
-## Dependency pin
+## Build
 
-`recomp-ui` is a Git submodule. The repository pins a concrete revision
-instead of following the upstream default branch.
-
-Initialize it with:
+Initialize the pinned UI dependency once:
 
 ```bash
 git submodule update --init --recursive recomp-ui
 ```
 
-If the submodule is absent, CMake warns and builds the existing CLI-only host
-instead. This makes launcher work non-blocking for compatibility development.
+Then:
 
-## Fidelity boundary
+```bash
+./scripts/build-launcher.sh
+```
 
-Launcher/settings features are host presentation and workflow capabilities.
-The faithful 240x160 strict-static route remains available.
+The launcher build is emitted separately from the milestone development build:
 
-Not included in P1:
+```text
+build-launcher/MZMRecomp
+```
+
+Run:
+
+```bash
+./build-launcher/MZMRecomp
+```
+
+or force setup:
+
+```bash
+./build-launcher/MZMRecomp --launcher
+```
+
+## P2 — Identity and Linux packaging
+
+Next product-shell items:
+
+- original MZM-Recomp application icon;
+- launcher box-art / identity treatment using distributable original artwork;
+- Linux `.desktop` entry;
+- AppDir/release staging;
+- release ZIP and/or AppImage research;
+- first-run documentation;
+- release audit that rejects ROM, BIOS, saves, generated ROM-derived C++ and
+  local path leakage.
+
+## Later enhancements
+
+Framework capabilities we can expose after the shell is stable:
+
+- GBA display color profiles;
+- controller remapping;
+- save states;
+- rewind;
+- fast-forward;
+- fullscreen/resizable-window preferences.
+
+Game-specific enhancements are separate:
 
 - adaptive widescreen;
-- gameplay modifications;
-- 60 FPS logic patches;
-- ROM patches/mod packages;
-- game-specific rendering extensions.
+- high-refresh/60 FPS experiments;
+- game-owned presentation extensions.
 
-Those require their own evidence and do not ride on the launcher milestone.
-
-## Next product steps
-
-P2:
-
-- original MZM-Recomp icon/brand mark;
-- launcher box art / project art that does not redistribute extracted game
-  assets;
-- Linux `.desktop` integration;
-- release directory layout;
-- AppImage/portable archive research;
-- first-run documentation and release audit.
+Those require dedicated MZM validation rather than merely turning on a generic
+runtime option.
