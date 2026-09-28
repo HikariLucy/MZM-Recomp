@@ -31,7 +31,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
 | Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
 | MZM cartridge static-analysis scan | **CONFIRMED** | First configured discovery/codegen pass succeeded: 28,346 translation roots, 49 ARM / 28,297 Thumb, 9,540 indirect transfers, 335 auto jump tables / 8,675 targets, `undefined=0`; IRQ IWRAM code-copy emitted and dispatched |
-| Hardware support matrix qualification | **EXPERIMENTAL** | Boot IRQ + audio executable-RAM copies are now modeled and emitted (`code_copies=4`, `undefined=0`); remaining M0.6 work is clipdata/fixed-copy inventory plus explicit plans for mutable `hazeCode` and PPU mosaic |
+| Hardware support matrix qualification | **EXPERIMENTAL** | IRQ + audio copies are qualified; fixed clipdata copy is now pinned/configured (`0x030016C4 <- 0x08057F7C`, `0x280`, Thumb) and awaits one regeneration check; haze/mosaic ownership plans are documented |
 | First generated native C++ | **PENDING** | M1 |
 | First native MZM instruction executed | **PENDING** | M1 |
 | Boot/intro/title | **PENDING** | M2 |

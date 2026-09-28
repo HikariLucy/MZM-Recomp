@@ -127,7 +127,8 @@ Current findings:
 - [x] Identify PPU mosaic as an MZM-relevant engine gap.
 - [x] Identify mutable same-PC `hazeCode` as a strict-static engine gap.
 - [x] Pin and qualify boot-time fixed executable RAM copies (IRQ + audio A/B/C).
-- [ ] Pin remaining M0/M3-relevant fixed executable RAM copies (clipdata; classify later/deferred copies separately).
+- [x] Pin remaining M0/M3-relevant fixed executable RAM copies (clipdata; later/deferred copies classified separately).
+- [ ] Regenerate once with clipdata mapping and confirm `code_copies=5`, `undefined=0`, and runtime dispatch root.
 - [x] Assign implementation ownership/acceptance criteria for mosaic (generic GBARecomp PPU).
 - [x] Assign implementation ownership/acceptance criteria for mutable code-copy variants (generic GBARecomp dispatch/code-copy support; hybrid allowed during bring-up).
 - [ ] Close M0.6 matrix.

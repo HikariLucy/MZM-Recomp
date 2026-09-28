@@ -21,3 +21,22 @@ codegen_shards = 16
 
 [identity]
 sha1 = "5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8"
+
+# Fixed gameplay code copy.
+#
+# ClipdataSetupCode() copies 0x280 bytes starting at
+# ClipdataConvertToCollision into gNonGameplayRam.inGame.clipdataCode.
+# clipdataCode is the first field of gNonGameplayRam, so its runtime
+# address is exactly 0x030016C4.
+[[code_copy]]
+runtime_start = 0x030016C4
+source_start = 0x08057F7C
+size = 0x280
+name = "clipdataCode"
+note = "MZM: ClipdataConvertToCollision copied to gNonGameplayRam.inGame.clipdataCode"
+
+[[extra_func]]
+addr = 0x030016C4
+mode = "thumb"
+name = "clipdatacode_entry"
+note = "entry of the fixed clipdataCode RAM copy"
