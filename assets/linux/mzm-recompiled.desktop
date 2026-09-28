@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MZM Recompiled
+Comment=Native static recompilation project
+Exec=MZMRecomp
+Icon=mzm-recompiled
+StartupWMClass=MZMRecomp
+Terminal=false
+Categories=Game;

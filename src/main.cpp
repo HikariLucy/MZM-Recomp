@@ -1,6 +1,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -11,9 +13,28 @@
 
 #if defined(MZM_RECOMP_UI)
 #include "game_launcher_boot.h"
+#include <SDL.h>
 #endif
 
 namespace {
+
+#if defined(MZM_RECOMP_UI)
+struct RuntimeIcon {
+    SDL_Surface* surface = nullptr;
+    std::atomic<bool> applied{false};
+};
+
+int apply_runtime_icon(void* userdata, SDL_Event* event) {
+    if (event->type != SDL_WINDOWEVENT || event->window.event != SDL_WINDOWEVENT_SHOWN)
+        return 0;
+    auto* icon = static_cast<RuntimeIcon*>(userdata);
+    if (SDL_Window* window = SDL_GetWindowFromID(event->window.windowID)) {
+        SDL_SetWindowIcon(window, icon->surface);
+        if (!icon->applied.exchange(true)) mzm::log_event("game_window_icon=applied");
+    }
+    return 0;
+}
+#endif
 
 void print_usage() {
     std::printf(
@@ -79,7 +100,19 @@ int main(int argc, char** argv) {
         av.push_back(arg.data());
     }
 
+    // GBARecomp creates a fresh SDL window. Apply the same native icon when
+    // SDL announces that window, without modifying the runtime's window code.
+    const auto icon_path = std::filesystem::absolute(args.front()).parent_path()
+        / "assets/icons/mzm-recompiled.bmp";
+    RuntimeIcon icon;
+    icon.surface = SDL_LoadBMP(icon_path.string().c_str());
+    if (icon.surface) SDL_AddEventWatch(apply_runtime_icon, &icon);
     rc = gbarecomp::run_game(static_cast<int>(av.size()), av.data(), opts);
+    if (icon.surface) {
+        SDL_DelEventWatch(apply_runtime_icon, &icon);
+        SDL_FreeSurface(icon.surface);
+        if (!icon.applied) mzm::log_event("game_window_icon=not_observed");
+    }
 #else
     rc = gbarecomp::run_game(argc, argv, opts);
 #endif

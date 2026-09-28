@@ -1,12 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="MZM Recompiled project icon">
   <defs>
-    <linearGradient id="space" x2="1" y2="1"><stop stop-color="#071522"/><stop offset="1" stop-color="#173345"/></linearGradient>
-    <linearGradient id="energy" x2="1" y2="1"><stop stop-color="#48e2cd"/><stop offset="1" stop-color="#4a91dd"/></linearGradient>
+    <linearGradient id="space" x2="1" y2="1"><stop stop-color="#070b12"/><stop offset="1" stop-color="#121d2a"/></linearGradient>
+    <linearGradient id="energy" x2="1" y2="1"><stop stop-color="#37b7c8"/><stop offset="1" stop-color="#ff7a1a"/></linearGradient>
   </defs>
   <rect width="256" height="256" rx="48" fill="url(#space)"/>
-  <circle cx="128" cy="128" r="90" fill="none" stroke="#28606d" stroke-width="4"/>
-  <path d="M32 129h34m124 0h34M128 32v34m0 124v34" stroke="#49dbc8" stroke-width="6" stroke-linecap="round"/>
-  <circle cx="128" cy="128" r="61" fill="#10313d" stroke="#51d8cc" stroke-width="3"/>
-  <path d="M77 164V95l51 42 51-42v69" fill="none" stroke="url(#energy)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="189" cy="78" r="8" fill="#74edcc"/>
+  <circle cx="128" cy="128" r="105" fill="none" stroke="#275064" stroke-width="4"/>
+  <circle cx="128" cy="128" r="84" fill="#0d141f" stroke="#37b7c8" stroke-width="3"/>
+  <path d="M57 177V79l71 62 71-62v98" fill="none" stroke="url(#energy)" stroke-width="21" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="204" cy="68" r="9" fill="#ff7a1a"/>
 </svg>
