@@ -1,6 +1,7 @@
 # MZM-Recomp Product Shell
 
-**State:** launcher foundation implemented; local validation pending.
+**State:** MZM-specific private beta launcher implemented; validation details
+and current limitations are tracked in [LAUNCHER.md](LAUNCHER.md).
 
 This workstream runs in parallel with M4 compatibility. It improves the native
 PC experience without changing the guest cartridge logic or relaxing the
@@ -8,8 +9,8 @@ strict-static validation path.
 
 ## P1 — Launcher foundation
 
-The launcher uses GBARecomp's shared `recomp-ui` seam rather than a custom
-frontend.
+The launcher uses `recomp-ui`'s Dear ImGui, SDL2/OpenGL, and native file picker
+in an MZM-specific frontend. GBARecomp's runtime remains the launch target.
 
 Initial surface:
 
@@ -24,7 +25,8 @@ Initial surface:
 - rewind/fast-forward assist tools;
 - resizable native presentation.
 
-The launcher persists only player-owned configuration beside the executable:
+The older generic launcher persisted player-owned configuration beside the
+executable:
 
 ```text
 mzm-config.ini
@@ -34,6 +36,8 @@ mzm-bios.cfg
 ```
 
 No ROM, BIOS, save, or generated ROM-derived source is committed.
+The MZM-specific beta instead stores path references under the user config
+directory and logs under the user state directory. See [LAUNCHER.md](LAUNCHER.md).
 
 ## Dependency pin
 

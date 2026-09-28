@@ -372,3 +372,14 @@ Candidates:
 - Steam Deck packaging/validation.
 
 Enhancements must remain separable from the faithful validation path.
+
+## Product shell — Private Beta
+
+- [x] Original MZM Recompiled launcher identity and icon source.
+- [x] First-run game file/BIOS selection, hash validation, user config persistence.
+- [x] Home, Game Data, Settings scaffold, About, and strict-static Play handoff.
+- [x] Sanitized launcher event log and reproducible Linux x86_64 package script.
+- [ ] Visual beta review and end-to-end gameplay run from the portable package.
+- [ ] Capture runtime fatal diagnostics in a sanitized exportable report.
+- [ ] Windows package and platform icon integration.
+- [ ] BIOS-independent runtime, contingent on separate implementation and validation.

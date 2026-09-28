@@ -45,7 +45,8 @@ Initialize the pinned UI dependency with:
 git submodule update --init --recursive recomp-ui
 ```
 
-See [docs/PRODUCT-SHELL.md](docs/PRODUCT-SHELL.md).
+See [docs/LAUNCHER.md](docs/LAUNCHER.md) for the current MZM-specific launcher
+and [docs/BETA-TESTING.md](docs/BETA-TESTING.md) for beta packaging and testing.
 
 ## Verified cartridge targets
 
