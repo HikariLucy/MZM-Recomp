@@ -61,6 +61,20 @@ void file_row(const char* name, const char* hint, const char* action,
     status(name, error, path.data());
     ImGui::PopID();
 }
+void enhancement_card(const char* title, const char* detail, const char* availability,
+                      float width, ImFont* bold) {
+    ImGui::PushID(title);
+    ImGui::BeginChild("##capability", ImVec2(width, 105.f), true);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
+    if (bold) ImGui::PushFont(bold);
+    ImGui::TextColored(mzm::theme::text, "%s", title);
+    if (bold) ImGui::PopFont();
+    ImGui::TextWrapped("%s", detail);
+    ImGui::TextColored(mzm::theme::success, "%s", availability);
+    ImGui::PopStyleVar();
+    ImGui::EndChild();
+    ImGui::PopID();
+}
 void background(ImVec2 vp) {
     auto* dl = ImGui::GetBackgroundDrawList();
     dl->AddRectFilledMultiColor(ImVec2(0, 0), vp,
@@ -89,7 +103,7 @@ void set_window_icon(SDL_Window* window, const fs::path& executable) {
     if (surface) { SDL_SetWindowIcon(window, surface); SDL_FreeSurface(surface); }
     else std::fprintf(stderr, "[mzm-launcher] icon unavailable: %s\n", icon.string().c_str());
 }
-enum class Page { Setup, Home, Settings, Data, About };
+enum class Page { Setup, Home, Enhancements, Settings, Data, About };
 }
 
 int game_launcher_preboot(std::vector<std::string>& args,
@@ -119,6 +133,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
     // Local visual review hook; it never writes launcher state or bypasses validation.
     if (const char* preview = std::getenv("MZM_LAUNCHER_PREVIEW_PAGE")) {
         if (std::strcmp(preview, "home") == 0) page = Page::Home;
+        else if (std::strcmp(preview, "enhancements") == 0) page = Page::Enhancements;
         else if (std::strcmp(preview, "data") == 0) page = Page::Data;
         else if (std::strcmp(preview, "settings") == 0) page = Page::Settings;
         else if (std::strcmp(preview, "about") == 0) page = Page::About;
@@ -270,22 +285,40 @@ int game_launcher_preboot(std::vector<std::string>& args,
             ImGui::BeginDisabled(!valid);
             if (primary_button("PLAY", ImVec2(230, 62))) { play = true; running = false; }
             ImGui::EndDisabled();
+            if (hero_h > 360.f) {
+                const char* features = "SAVE STATES  ·  REWIND  ·  FAST FORWARD";
+                ImGui::SetCursorPosX(std::max(12.f, (s.x-ImGui::CalcTextSize(features).x)*.5f));
+                ImGui::TextColored(mzm::theme::muted, "%s", features);
+            }
             ImGui::EndChild();
-            const float nav = std::min(170.f, (content-20.f)/3.f);
+            const float nav = std::min(170.f, (content-30.f)/4.f);
             if (ImGui::Button("Game Data", ImVec2(nav, 42))) page = Page::Data;
+            ImGui::SameLine(); if (ImGui::Button("Enhancements", ImVec2(nav, 42))) page = Page::Enhancements;
             ImGui::SameLine(); if (ImGui::Button("Settings", ImVec2(nav, 42))) page = Page::Settings;
             ImGui::SameLine(); if (ImGui::Button("About", ImVec2(nav, 42))) page = Page::About;
+        } else if (page == Page::Enhancements) {
+            heading("NATIVE ENHANCEMENTS", "Host runtime capabilities for play and presentation.", bold);
+            ImGui::BeginChild("##enhancements", ImVec2(0, -48.f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 7));
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 8));
+            const float card = (ImGui::GetContentRegionAvail().x - 16.f) / 3.f;
+            enhancement_card("SAVE STATES", "9 selectable slots", "AVAILABLE IN-GAME", card, bold);
+            ImGui::SameLine(); enhancement_card("REWIND", "Recent play, ~15 sec history", "AVAILABLE IN-GAME", card, bold);
+            ImGui::SameLine(); enhancement_card("FAST FORWARD", "4x target by default", "AVAILABLE IN-GAME", card, bold);
+            enhancement_card("DISPLAY", "Resizable window + fullscreen", "AVAILABLE IN-GAME", card, bold);
+            ImGui::SameLine(); enhancement_card("CONTROLS", "Keyboard / controller bindings", "AVAILABLE", card, bold);
+            ImGui::SameLine(); enhancement_card("COLOR MODELS", "Raw + 4 screen simulations", "AVAILABLE", card, bold);
+            ImGui::PopStyleVar(2);
+            ImGui::EndChild();
         } else if (page == Page::Settings) {
-            heading("SETTINGS", "Runtime options are available during gameplay.", bold);
+            heading("SETTINGS", "Preferences are managed by the host runtime.", bold);
             ImGui::BeginChild("##settings", ImVec2(0, -48), true);
-            for (const auto& section : {"Display", "Audio", "Controls", "Assist", "Advanced"}) {
-                ImGui::TextColored(mzm::theme::cool, "%s", section);
-                ImGui::SameLine(150);
-                ImGui::TextColored(mzm::theme::muted, "%s",
-                    std::string(section) == "Advanced" ? "Unavailable in this build" :
-                    "Use the in-game runtime menu");
-                ImGui::Separator();
-            }
+            ImGui::TextColored(mzm::theme::cool, "IN-GAME MENU");
+            ImGui::TextWrapped("Display, audio, save states, rewind, and fast-forward are managed during play.");
+            ImGui::Separator();
+            ImGui::TextColored(mzm::theme::cool, "HOST CONFIGURATION");
+            ImGui::TextWrapped("Keyboard and controller bindings load from keybinds.ini and config.ini beside the executable.");
+            ImGui::TextWrapped("Screen color model is selected at launch via [video].screen, --screen, or GBARECOMP_SCREEN.");
             ImGui::EndChild();
         } else {
             heading("ABOUT", "MZM Recompiled  /  Private Beta", bold);

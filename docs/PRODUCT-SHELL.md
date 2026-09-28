@@ -18,7 +18,7 @@ Current launcher surface:
 
 - verified MZM USA ROM picker;
 - verified retail GBA BIOS picker;
-- Home, Game Data, Settings, and About;
+- Home, Game Data, Enhancements, Settings, and About;
 - PLAY into the existing strict-static runtime.
 
 Runtime menu capabilities (not editable on the launcher Settings page):

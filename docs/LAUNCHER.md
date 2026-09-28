@@ -24,6 +24,13 @@ fallback. `Continue` saves paths and opens Home. Later runs open Home directly
 while both files still validate. `Game Data` changes either path and
 `Revalidate` checks files again.
 
+Home links to Enhancements, which summarizes verified host features: nine save
+state slots, about 15 seconds of rewind history, 4x default fast-forward,
+resizable/fullscreen display, input bindings, and launch-time color models.
+The in-game menu manages save states, rewind, fast-forward, and display options.
+Input bindings load from host configuration files; color models are selected
+at launch. The showcase has no inactive controls.
+
 `PLAY` sets `GBARECOMP_STRICT_STATIC=1` and calls the existing runtime in the
 same process with `--bios`, `--rom`, and `--config configs/mzm-us.toml`. The
 config is resolved beside the executable in a beta package, or one directory
@@ -66,7 +73,7 @@ GBARecomp creates the game window. Desktop association uses the included
 libraries.
 
 For a local visual capture, set `MZM_LAUNCHER_CAPTURE=/tmp/mzm-home.bmp` and,
-optionally, `MZM_LAUNCHER_PREVIEW_PAGE=home|data|settings|about` and
+optionally, `MZM_LAUNCHER_PREVIEW_PAGE=home|enhancements|data|settings|about` and
 `MZM_LAUNCHER_WINDOW_SIZE=720x480` before running
 `MZMRecomp --launcher`. Capture exits without saving configuration or launching
 the game. Preview pages do not change validation or enable PLAY.
