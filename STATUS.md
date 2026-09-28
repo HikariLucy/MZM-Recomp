@@ -29,7 +29,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | `agbcc` baseline identified | **CONFIRMED** | Pin: `59b966ed1b8f371856dcf99f1546c2fe89c678ca` |
 | Rebuild MZM USA from decomp | **CONFIRMED** | Pinned `metroidret/mzm` rebuilt `mzm_us.gba` with the expected SHA-1 and `cmp` confirmed byte-for-byte identity |
 | Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
-| Build/qualify GBARecomp on Linux | **EXPERIMENTAL** | Functional gate passed: framework built successfully and CTest passed 34/34 on Linux; final compact host-version/pin evidence still needs to be captured |
+| Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
 | MZM cartridge static-analysis scan | **PENDING** | M0.5 |
 | Hardware support matrix qualification | **PENDING** | M0.6 |
 | First generated native C++ | **PENDING** | M1 |
@@ -68,7 +68,22 @@ The pinned GBARecomp baseline built successfully on Linux. The build reached 100
 
 The compiler emitted warnings, including missing-field initializers in PPU smoke tests and several unused/extern-initialized variables, but no warning became a build failure.
 
-M0.4 remains **EXPERIMENTAL** only until a compact host inventory is re-captured in evidence: exact `HEAD`, CMake/GCC/G++ versions, and SDL2 availability/version. The functional framework qualification itself has passed.
+Final host inventory:
+
+```text
+GBARecomp HEAD: e7728148c6829ba526f682876430a0c9022dc6c0
+Host: Linux x86_64, Ubuntu 24.04-series kernel 7.0.0-31-generic
+CMake: 3.28.3
+GCC: 13.3.0
+G++: 13.3.0
+Python: 3.12.3
+SDL2: 2.30.0
+gba_recompile: OK
+gba_scan: OK
+bios_smoke: OK
+```
+
+M0.4 is therefore **CONFIRMED**. The next active work package is **M0.5 — MZM cartridge static-analysis scan**.
 
 ## Confirmed cartridge identities
 

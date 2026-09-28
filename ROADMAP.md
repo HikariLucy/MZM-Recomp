@@ -70,8 +70,10 @@ Current M0.3 progress:
 - [x] Build framework/tools on Linux.
 - [x] Run relevant upstream tests (34/34 passed).
 - [x] Verify a normal Linux host build path.
-- [ ] Record compiler/CMake/Ninja/SDL versions.
+- [x] Record compiler/CMake/host SDL2 versions.
 - [x] Do not patch GBARecomp for MZM until the unmodified baseline is proven.
+
+**Gate:** pinned GBARecomp builds on Linux and upstream CTest passes 34/34 with host/toolchain inventory captured. **PASSED 2026-09-28.**
 
 ### M0.5 — MZM cartridge analysis
 
