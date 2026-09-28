@@ -48,3 +48,10 @@ cmake-build-*/
 __pycache__/
 *.pyc
 .venv/
+
+# Local launcher/runtime state
+/bios.cfg
+/disc.cfg
+/keybinds.ini
+/rom.cfg
+/recomp_coverage_*.json
