@@ -29,29 +29,6 @@ The same session persisted a 32 KiB SRAM save, and a later strict-static process
 
 See [STATUS.md](STATUS.md) for the exact evidence-backed status.
 
-## Optional graphical launcher
-
-MZM-Recomp also has a parallel player-facing product shell built on GBARecomp's
-shared `recomp-ui` launcher. It keeps ROM/BIOS selection, player settings and
-host-side quality-of-life features separate from the strict-static compatibility
-path.
-
-Initialize the pinned UI submodule and build:
-
-```bash
-git submodule update --init --recursive recomp-ui
-./scripts/build-launcher.sh
-```
-
-Then launch:
-
-```bash
-./build-launcher/MZMRecomp
-```
-
-The launcher does not distribute or embed the ROM or BIOS. See
-[`docs/PRODUCT-SHELL.md`](docs/PRODUCT-SHELL.md).
-
 ## Native launcher
 
 MZM-Recomp also has an optional `recomp-ui` product shell under active
@@ -68,7 +45,8 @@ Initialize the pinned UI dependency with:
 git submodule update --init --recursive recomp-ui
 ```
 
-See [docs/PRODUCT-SHELL.md](docs/PRODUCT-SHELL.md).
+See [docs/LAUNCHER.md](docs/LAUNCHER.md) for the current MZM-specific launcher
+and [docs/BETA-TESTING.md](docs/BETA-TESTING.md) for beta packaging and testing.
 
 ## Verified cartridge targets
 

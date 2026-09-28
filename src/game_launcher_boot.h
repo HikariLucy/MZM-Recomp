@@ -5,8 +5,8 @@
 
 #include "runtime.h"
 
-// Run recomp-ui's GBA pre-boot launcher. Returns non-zero when the user chose
-// to quit instead of booting the game. Committed launcher settings are appended
-// to args as ordinary GBARecomp CLI arguments.
+// Run the MZM pre-boot launcher. Returns 0 for PLAY or CLI bypass, 1 when the
+// user closes it, and 2 on launcher failure. PLAY appends ordinary runtime CLI
+// arguments without changing the backend.
 int game_launcher_preboot(std::vector<std::string>& args,
                           const gbarecomp::RunOptions& opts);

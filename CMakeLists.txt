@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
-project(MZMRecomp C CXX)
+project(MZMRecomp VERSION 0.1.0 LANGUAGES C CXX)
+include(CTest)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
@@ -36,6 +37,7 @@ endif()
 
 add_executable(MZMRecomp
     src/main.cpp
+    src/mzm_log.cpp
     src/mzm_ram_dispatch.cpp
     src/mzm_milestone_probe.cpp
     ${GAME_GENERATED_SOURCES}
@@ -70,7 +72,18 @@ target_link_libraries(MZMRecomp PRIVATE
 
 target_compile_definitions(MZMRecomp PRIVATE
     GBARECOMP_WINDOW_TITLE="MZM-Recomp"
+    MZM_VERSION="${PROJECT_VERSION}"
 )
+
+# The state tests use no game data and do not require generated code to run.
+if(BUILD_TESTING AND EXISTS "${RECOMP_UI_ROOT}/src/common/sha1.c")
+    add_executable(mzm_launcher_state_test
+        tests/launcher_state_test.cpp src/launcher_state.cpp
+        "${RECOMP_UI_ROOT}/src/common/sha1.c")
+    target_include_directories(mzm_launcher_state_test PRIVATE
+        src "${RECOMP_UI_ROOT}/src/common")
+    add_test(NAME mzm-launcher-state COMMAND mzm_launcher_state_test)
+endif()
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -86,8 +99,12 @@ if(MZM_RECOMP_UI)
 
         add_library(mzm_launcher_ui STATIC
             src/game_launcher_boot.cpp
+            src/launcher_state.cpp
         )
         target_include_directories(mzm_launcher_ui PRIVATE
+            "${RECOMP_UI_ROOT}/src/third_party/imgui"
+            "${RECOMP_UI_ROOT}/src/third_party/imgui/backends"
+            "${RECOMP_UI_ROOT}/src/common"
             "${GBARECOMP_ROOT}/src/runtime"
             "${GBARECOMP_ROOT}/src/gba"
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -96,6 +113,7 @@ if(MZM_RECOMP_UI)
         recomp_target_launcher_ui(mzm_launcher_ui
             CONSOLE gba
         )
+        target_compile_definitions(mzm_launcher_ui PRIVATE MZM_VERSION="${PROJECT_VERSION}")
 
         find_package(SDL2 REQUIRED)
         target_link_libraries(mzm_launcher_ui PUBLIC SDL2::SDL2)
