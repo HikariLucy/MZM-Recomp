@@ -66,12 +66,12 @@ Current M0.3 progress:
 
 ### M0.4 — GBARecomp Linux qualification
 
-- [ ] Pin GBARecomp commit.
-- [ ] Build framework/tools on Linux.
-- [ ] Run relevant upstream tests.
-- [ ] Verify a normal Linux host build path.
+- [x] Pin GBARecomp commit.
+- [x] Build framework/tools on Linux.
+- [x] Run relevant upstream tests (34/34 passed).
+- [x] Verify a normal Linux host build path.
 - [ ] Record compiler/CMake/Ninja/SDL versions.
-- [ ] Do not patch GBARecomp for MZM until the unmodified baseline is proven.
+- [x] Do not patch GBARecomp for MZM until the unmodified baseline is proven.
 
 ### M0.5 — MZM cartridge analysis
 
