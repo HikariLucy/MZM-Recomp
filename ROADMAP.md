@@ -59,8 +59,10 @@ Current M0.3 progress:
 - [x] Extract the initial boot/runtime symbol set from the rebuilt ELF/map.
 - [x] Derive ISA state for the wider function set using ELF ARM mapping symbols.
 - [x] Produce a repeatable machine-readable address → ISA → symbol → object/source map.
-- [ ] Add title/file-select and main-loop HALT/VBlank anchors.
-- [ ] Close M0.3 with reproducible mapping output.
+- [x] Add title/file-select and main-loop HALT/VBlank anchors.
+- [x] Close M0.3 with reproducible mapping output.
+
+**Gate:** reproducible semantic map including boot, HALT/VBlank, Intro, Title and File Select anchors. **PASSED 2026-09-28.**
 
 ### M0.4 — GBARecomp Linux qualification
 

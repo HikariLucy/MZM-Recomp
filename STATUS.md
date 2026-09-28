@@ -28,7 +28,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | `mstan/gbarecomp` baseline identified | **CONFIRMED** | Pin: `e7728148c6829ba526f682876430a0c9022dc6c0` |
 | `agbcc` baseline identified | **CONFIRMED** | Pin: `59b966ed1b8f371856dcf99f1546c2fe89c678ca` |
 | Rebuild MZM USA from decomp | **CONFIRMED** | Pinned `metroidret/mzm` rebuilt `mzm_us.gba` with the expected SHA-1 and `cmp` confirmed byte-for-byte identity |
-| Export semantic symbol/address map | **EXPERIMENTAL** | Reproducible CSV generation now works: 21,082 ROM-range symbols classified with 15,575 ARM ELF mapping symbols; boot/runtime anchors resolve to source/object and ISA |
+| Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
 | Build/qualify GBARecomp on Linux | **PENDING** | M0.4 |
 | MZM cartridge static-analysis scan | **PENDING** | M0.5 |
 | Hardware support matrix qualification | **PENDING** | M0.6 |
@@ -54,7 +54,13 @@ Built SHA-1:    5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8
 BYTE_IDENTICAL: YES
 ```
 
-M0.2 is therefore **CONFIRMED**. The next active work package is **M0.3 — semantic address/symbol mapping**.
+M0.2 is therefore **CONFIRMED**.
+
+## M0.3 result — semantic map confirmed
+
+The rebuilt ELF/map now provides a reproducible semantic map for the verified USA ROM. Automatic ARM/Thumb/Data classification works through ELF mapping symbols, and the required boot/runtime/menu anchors are captured. The exact main-loop HALT instruction is `SVC 2` at `0x0800066C`; the flow resumes only after `gVBlankRequestFlag` is set by the VBlank/IRQ path.
+
+M0.3 is therefore **CONFIRMED**. The next active work package is **M0.4 — GBARecomp Linux qualification**.
 
 ## Confirmed cartridge identities
 
