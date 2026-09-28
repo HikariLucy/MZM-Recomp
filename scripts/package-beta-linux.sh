@@ -25,9 +25,15 @@ mkdir -p "$STAGE/assets/icons" "$STAGE/configs" "$STAGE/runtime"
 mkdir -p "$STAGE/assets/img"
 cp "$BUILD/MZMRecomp" "$STAGE/MZMRecomp"
 cp -a "$BUILD/assets/fonts" "$STAGE/assets/"
+cp "$REPO/recomp-ui/assets/common/fonts/NOTICE.md" "$STAGE/assets/fonts/NOTICE.md"
 # Keep only shared status glyphs; the generic launcher brand/pad art is unused.
 cp "$BUILD/assets/img"/verdict_*.tga "$STAGE/assets/img/"
 cp "$REPO/assets/icons/mzm-recompiled.svg" "$STAGE/assets/icons/"
+cp "$REPO/assets/icons/mzm-recompiled.bmp" "$STAGE/assets/icons/"
+cp "$REPO/assets/icons/"mzm-recompiled-*.png "$STAGE/assets/icons/"
+cp "$REPO/assets/icons/mzm-brand-helm-core.png" "$STAGE/assets/icons/"
+cp "$REPO/assets/icons/mzm-recompiled-source.png" "$STAGE/assets/icons/"
+cp "$REPO/assets/linux/mzm-recompiled.desktop" "$STAGE/MZMRecompiled.desktop"
 cp "$REPO/configs/mzm-us.toml" "$STAGE/configs/"
 cp "$REPO/docs/BETA-TESTING.md" "$STAGE/README.md"
 cat > "$STAGE/runtime/README.md" <<'EOF'
@@ -36,7 +42,8 @@ No game data, BIOS, or generated source files are bundled here.
 EOF
 
 if find "$STAGE" -type f \( -iname '*.gba' -o -iname '*.agb' -o -iname '*.bin' \
-     -o -iname '*.bios' -o -iname '*.sav' -o -iname '*rom.cfg' -o -iname '*bios.cfg' \) | grep -q .; then
+     -o -iname '*.bios' -o -iname '*.sav' -o -iname '*rom.cfg' -o -iname '*bios.cfg' \
+     -o -iname 'recompiled_*.c' -o -iname 'recompiled_*.cpp' -o -iname 'recompiled_*.h' \) | grep -q .; then
     echo "Package rejected: game data or local state detected" >&2
     exit 3
 fi

@@ -9,8 +9,11 @@ It does not modify the recompiled guest code or the GBARecomp CPU backend.
 `src/launcher_state.cpp` owns path persistence and file identity checks.
 
 The CMake project version is the single version source. The launcher and log
-read `MZM_VERSION` from CMake. The UI art uses procedural HUD lines; the icon
-source is original SVG in `assets/icons/`.
+read `MZM_VERSION` from CMake. `src/mzm_theme.h` centralizes the MZM palette,
+spacing and controls. Home loads the approved Helm Core helmet and orbit image
+from `assets/icons/mzm-brand-helm-core.png`. The compact concept-board crop in
+`assets/icons/mzm-recompiled-source.png` generates the native icon sizes, BMP,
+and SVG wrapper through `scripts/render-icon.py`.
 
 ## First start and Play
 
@@ -20,6 +23,13 @@ file pickers are used when available; the path fields accept manual paste as a
 fallback. `Continue` saves paths and opens Home. Later runs open Home directly
 while both files still validate. `Game Data` changes either path and
 `Revalidate` checks files again.
+
+Home links to Enhancements, which summarizes verified host features: nine save
+state slots, about 15 seconds of rewind history, 4x default fast-forward,
+resizable/fullscreen display, input bindings, and launch-time color models.
+The in-game menu manages save states, rewind, fast-forward, and display options.
+Input bindings load from host configuration files; color models are selected
+at launch. The showcase has no inactive controls.
 
 `PLAY` sets `GBARECOMP_STRICT_STATIC=1` and calls the existing runtime in the
 same process with `--bios`, `--rom`, and `--config configs/mzm-us.toml`. The
@@ -45,8 +55,8 @@ paths. A successful strict-static run is recorded as `static-recompiled`;
 runtime stdout/stderr is not captured in this beta.
 
 GBARecomp saves to `<game-file>.sav` unless `[save].path` in a runtime config
-overrides it. Home shows only whether that save exists, not its in-game slot or
-progress. Keep the game file somewhere writable if saving is needed.
+overrides it. The visual Home keeps save details off the main screen. Keep the
+game file somewhere writable if saving is needed.
 
 ## Build and limitations
 
@@ -56,5 +66,14 @@ described in `docs/BUILD-LINUX.md`. The optional UI requires the initialized
 CLI host with `-DMZM_RECOMP_UI=OFF`; it will still accept explicit ROM/BIOS
 arguments. The launcher currently leaves Video, Audio, and Controls editing to
 the runtime UI; Advanced has no active settings. Full-screen and controller
-navigation polish, window icon integration, and Windows packaging remain future
-work. The bundled binary depends on compatible system SDL2/OpenGL libraries.
+navigation polish and Windows packaging remain future work. The launcher uses
+`SDL_SetWindowIcon`; a short-lived SDL event watch applies the same icon when
+GBARecomp creates the game window. Desktop association uses the included
+`.desktop` template. The bundled binary depends on compatible system SDL2/OpenGL
+libraries.
+
+For a local visual capture, set `MZM_LAUNCHER_CAPTURE=/tmp/mzm-home.bmp` and,
+optionally, `MZM_LAUNCHER_PREVIEW_PAGE=home|enhancements|data|settings|about` and
+`MZM_LAUNCHER_WINDOW_SIZE=720x480` before running
+`MZMRecomp --launcher`. Capture exits without saving configuration or launching
+the game. Preview pages do not change validation or enable PLAY.

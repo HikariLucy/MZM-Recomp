@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MZM Recompiled
+Comment=MZM Recompiled private beta with Helm Core identity
+Exec=MZMRecomp
+Icon=mzm-recompiled
+StartupWMClass=MZMRecomp
+Terminal=false
+Categories=Game;

@@ -115,6 +115,20 @@ if(MZM_RECOMP_UI)
         )
         target_compile_definitions(mzm_launcher_ui PRIVATE MZM_VERSION="${PROJECT_VERSION}")
 
+        add_custom_command(TARGET MZMRecomp POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_FILE_DIR:MZMRecomp>/assets/icons"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-recompiled.bmp"
+                    "$<TARGET_FILE_DIR:MZMRecomp>/assets/icons/mzm-recompiled.bmp"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-brand-helm-core.png"
+                    "$<TARGET_FILE_DIR:MZMRecomp>/assets/icons/mzm-brand-helm-core.png"
+            VERBATIM)
+        set_property(TARGET MZMRecomp APPEND PROPERTY LINK_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-recompiled.bmp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-brand-helm-core.png")
+
         find_package(SDL2 REQUIRED)
         target_link_libraries(mzm_launcher_ui PUBLIC SDL2::SDL2)
         if(WIN32)

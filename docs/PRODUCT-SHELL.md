@@ -1,7 +1,9 @@
 # MZM-Recomp Product Shell
 
-**State:** MZM-specific private beta launcher implemented; validation details
-and current limitations are tracked in [LAUNCHER.md](LAUNCHER.md).
+**State:** MZM-specific private beta launcher and visual identity implemented;
+validation details and current limitations are tracked in [LAUNCHER.md](LAUNCHER.md).
+The approved Helm Core branding, matching app icon, and packaging rules are in
+[VISUAL-IDENTITY.md](VISUAL-IDENTITY.md).
 
 This workstream runs in parallel with M4 compatibility. It improves the native
 PC experience without changing the guest cartridge logic or relaxing the
@@ -12,11 +14,15 @@ strict-static validation path.
 The launcher uses `recomp-ui`'s Dear ImGui, SDL2/OpenGL, and native file picker
 in an MZM-specific frontend. GBARecomp's runtime remains the launch target.
 
-Initial surface:
+Current launcher surface:
 
 - verified MZM USA ROM picker;
 - verified retail GBA BIOS picker;
-- existing SRAM save detection;
+- Home, Game Data, Enhancements, Settings, and About;
+- PLAY into the existing strict-static runtime.
+
+Runtime menu capabilities (not editable on the launcher Settings page):
+
 - window scale/fullscreen;
 - GBA screen color profiles;
 - audio volume;
@@ -70,12 +76,5 @@ Those require their own evidence and do not ride on the launcher milestone.
 
 ## Next product steps
 
-P2:
-
-- original MZM-Recomp icon/brand mark;
-- launcher box art / project art that does not redistribute extracted game
-  assets;
-- Linux `.desktop` integration;
-- release directory layout;
-- AppImage/portable archive research;
-- first-run documentation and release audit.
+P2 now includes the approved Helm Core mark, themed launcher, Linux desktop template,
+and release directory assets. AppImage research remains separate.

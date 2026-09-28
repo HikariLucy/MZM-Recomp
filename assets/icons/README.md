@@ -1,8 +1,9 @@
 # Icon source
 
-`mzm-recompiled.svg` is original vector art for this project. It is the source
-for future platform icons; no game graphics are used. A Windows `.ico` may be
-exported from this SVG at 16, 32, 48, and 256 px when a Windows package exists.
-Linux desktop integration can use the SVG directly or rasterize it at 64, 128,
-and 256 px. The launcher window still uses the default SDL window icon in this
-beta; the SVG is staged for package and desktop integration.
+The approved Helm Core concept board at
+`/home/hikarilucy/Descargas/MZM-Recompiled-Zero-Core/IMAGENREFERENCIA.png`
+is the visual source. `mzm-recompiled-source.png` is its compact icon crop;
+`mzm-brand-helm-core.png` is the large helmet and orbit crop for Home.
+Run `python3 scripts/render-icon.py` to regenerate the icon PNGs, SDL BMP,
+and self-contained SVG wrapper from the compact crop. The SVG embeds the
+approved raster artwork; it is not a vector redraw.
