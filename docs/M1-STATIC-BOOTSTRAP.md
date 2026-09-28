@@ -1,7 +1,7 @@
 # M1 — Static Bootstrap
 
 **Started:** 2026-09-28  
-**State:** **M1A PASSED / M1B ACTIVE**
+**State:** **M1A PASSED / M1B PASSED (HYBRID)**
 
 M0 established feasibility. M1 changes the question from "can this architecture represent MZM?" to "can the generated MZM corpus be compiled and executed as a native Linux host process?"
 
@@ -63,11 +63,60 @@ Initial M1B evidence should answer:
 - does execution reach cartridge entry `0x08000000`, startup `0x080000C0`, and `agbmain` `0x0800023C`?
 - what is the first deterministic stop/crash/divergence, if any?
 
+### M1B result
+
+The first interactive session succeeded with:
+
+```text
+cpu_backend=static-recompiled
+frames_presented=43921
+ppu_frames=43952
+native_calls=5193795
+unmapped=0
+io_unhandled=0
+
+self_heal_coverage=NOT_STATIC
+dispatch_misses=18
+interpreted_insns=1180314
+healed_native=9
+failed=9
+```
+
+The process remained operational through a long session, proving that the linked host is executing MZM through the static-recompiled backend.
+
+Miss inventory:
+
+```text
+BIOS ARM:
+0x00000008
+0x00000018
+0x00000128
+0x00000138
+0x00000140
+0x00000170
+0x000001A0
+0x000001AC
+0x000001B4
+
+high-IWRAM Thumb:
+0x03007D08
+0x03007D14
+0x03007D18
+0x03007D20
+0x03007D28
+0x03007D38
+0x03007D50
+0x03007D8C
+0x03007D90
+```
+
+The high-IWRAM cluster is consistent with the previously identified stack-local SRAM copied-code mechanism, but the project will not merge those PCs blindly. The generated miss proposal must be reviewed against source/runtime evidence first.
+
 ### M1B gate
 
-**Deterministic first recompiled MZM execution with trace evidence.**
+**PASSED 2026-09-28 — deterministic hybrid native execution demonstrated.**
 
-Hybrid/self-heal is allowed in M1B. Strict-static closure is explicitly not required until later milestone gates.
+Hybrid/self-heal was explicitly allowed in M1B. Strict-static closure remains a later gate.
 
 ## Minimal host
 

@@ -35,7 +35,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Generated native C++ corpus | **CONFIRMED** | GBARecomp emits 16 shards plus dispatch/symbol metadata from the verified ROM |
 | M1 minimal host scaffold | **CONFIRMED** | CMake runner + minimal `run_game` host + reproducible generation/build scripts committed and compiled successfully |
 | M1A host build | **CONFIRMED** | `MZMRecomp` linked successfully as a Linux x86-64 ELF; 16 generated shards compiled without hand edits; `--help` runs |
-| First native MZM instruction executed | **PENDING** | M1B |
+| First native MZM execution | **CONFIRMED** | M1B hybrid run completed successfully with static-recompiled backend, 5,193,795 native calls, ~43.9k presented frames, `unmapped=0`, `io_unhandled=0`; 18 dispatch misses were bridged/self-healed and remain static-coverage debt |
 | Boot/intro/title | **PENDING** | M2 |
 | Controllable Samus | **PENDING** | M3 |
 | Strict-static gameplay route | **PENDING** | M3 |
@@ -194,3 +194,38 @@ At this stage MZM-Recomp does **not** claim:
 - performance or feature parity.
 
 Any future README claim must be backed by a reproducible milestone gate.
+
+
+## M1B result — first native execution confirmed
+
+The first full MZMRecomp runtime session used the verified USA ROM and the previously validated 16 KiB GBA BIOS.
+
+Runtime evidence:
+
+```text
+cpu_backend=static-recompiled
+self_heal_recompile=ENABLED
+unmapped=0
+io_unhandled=0
+steps=1614165
+cycles=10345585742
+ppu_frames=43952
+frames_presented=43921
+native_calls=5193795
+dispatch_misses=18
+interpreted_insns=1180314
+healed_native=9
+failed=9
+```
+
+The application remained operational for a long interactive session and produced tens of thousands of presented frames. M1B therefore satisfies the project's first-execution gate.
+
+The session is explicitly **HYBRID / NOT_STATIC**:
+
+```text
+self_heal_coverage=NOT_STATIC
+```
+
+Nine misses are BIOS PCs and nine are high-IWRAM Thumb PCs around `0x03007D08..0x03007D90`. The high-IWRAM cluster is consistent with the previously identified stack-local executable SRAM-helper risk, but that attribution remains pending fragment/source review.
+
+M1B is **CONFIRMED / PASSED**. Strict-static closure is not claimed.

@@ -194,12 +194,24 @@ Residual risks are tracked, bounded, and do not prevent M1 bootstrap:
 
 ### M1B — First execution
 
-- Native host application starts.
-- Verified cartridge is loaded.
-- Native-recompiled MZM instruction stream begins execution.
-- Hybrid interpreter/self-heal may be used temporarily for discovery.
+- [x] Native host application starts.
+- [x] Verified cartridge is loaded.
+- [x] Static-recompiled backend executes the session.
+- [x] Native-recompiled MZM code executes successfully.
+- [x] Hybrid interpreter/self-heal may be used temporarily for discovery.
+- [x] Runtime remains mapped/handled (`unmapped=0`, `io_unhandled=0`).
+- [x] Coverage debt is reported explicitly rather than hidden.
 
-**Gate:** deterministic first recompiled execution with trace evidence.
+First-session evidence:
+
+```text
+native_calls=5193795
+frames_presented=43921
+dispatch_misses=18
+self_heal_coverage=NOT_STATIC
+```
+
+**Gate:** deterministic first recompiled execution with trace evidence. **PASSED 2026-09-28 (hybrid).**
 
 ---
 
