@@ -47,6 +47,9 @@ git submodule update --init --recursive recomp-ui
 
 See [docs/LAUNCHER.md](docs/LAUNCHER.md) for the current MZM-specific launcher
 and [docs/BETA-TESTING.md](docs/BETA-TESTING.md) for beta packaging and testing.
+Windows x86_64 build and package instructions are in
+[docs/BUILD-WINDOWS.md](docs/BUILD-WINDOWS.md). Windows execution remains
+unverified until a native Windows smoke and strict-static run is recorded.
 
 ## Verified cartridge targets
 

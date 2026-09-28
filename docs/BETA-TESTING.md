@@ -6,6 +6,20 @@ start. The launcher stores only their paths in your user configuration.
 
 ## Run a packaged build
 
+### Windows
+
+Extract `MZMRecompiled-Beta-Windows.zip` to a folder you can write to. Open
+`MZMRecomp.exe`; the Helm Core launcher will ask you to select your own USA
+revision 0 game file and GBA BIOS. When both show `Valid`, press `CONTINUE`
+and then `PLAY`. On later runs, use `Game Data` to change either file.
+`Enhancements`, `Settings`, and `About` are available in the same launcher.
+No compiler, Python, Git, global SDL2 install, ROM, or BIOS comes with the ZIP.
+Your save file stays beside your selected game file. Launcher settings are in
+`%APPDATA%\MZMRecompiled\`; logs are in
+`%LOCALAPPDATA%\MZMRecompiled\logs\`.
+
+### Linux
+
 From the package directory, run `./MZMRecomp`. Select the game file and BIOS,
 verify that both show `Valid`, press `CONTINUE`, then `PLAY`. On later runs,
 the launcher opens Home if both files still validate. `Game Data` can change
@@ -15,7 +29,7 @@ On Linux, SDL2, OpenGL, and compatible system libraries must be installed. A
 desktop display is required. If no native file picker is available, paste an
 absolute path into the corresponding field.
 
-The package includes the original MZM icon in SVG, PNG sizes and SDL2 BMP,
+The Linux package includes the original MZM icon in SVG, PNG sizes and SDL2 BMP,
 plus `MZMRecompiled.desktop`. The desktop file is an installation template:
 `Exec=MZMRecomp` requires the binary on `PATH`, and `Icon=mzm-recompiled`
 requires an installed icon theme entry. It is not registered automatically.
@@ -47,6 +61,6 @@ because the runtime may print absolute local paths.
 
 Known limits: only USA revision 0 is accepted; an external canonical GBA BIOS
 is still required; UI settings outside Game Data are informational; runtime
-fatal output is not yet copied into the launcher log; portable packages rely
+fatal output is not yet copied into the launcher log; Linux packages rely
 on system SDL2/OpenGL. A BIOS-independent runtime is future work and needs its
 own compatibility and legal review.

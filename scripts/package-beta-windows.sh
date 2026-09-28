@@ -45,6 +45,16 @@ GBARECOMP_ROOT="${MZM_GBARECOMP_ROOT:-}"
     || fail 'set MZM_GBARECOMP_ROOT to the exact linked GBARecomp checkout (LICENSE required)'
 cp "$GBARECOMP_ROOT/LICENSE" "$STAGE/THIRD-PARTY-LICENSES/GBARecomp.txt"
 cp "$REPO/recomp-ui/LICENSE" "$STAGE/THIRD-PARTY-LICENSES/recomp-ui.txt"
+cp "$REPO/recomp-ui/src/third_party/imgui/LICENSE.txt" \
+    "$STAGE/THIRD-PARTY-LICENSES/Dear-ImGui.txt"
+sed -n '1,51p' "$REPO/recomp-ui/src/third_party/tinyfiledialogs.c" \
+    > "$STAGE/THIRD-PARTY-LICENSES/tinyfiledialogs.txt"
+for dependency in arm-recomp-core rbengine recomp-net; do
+    [[ -f "$GBARECOMP_ROOT/external/$dependency/LICENSE" ]] \
+        || fail "missing GBARecomp dependency license: $dependency"
+    cp "$GBARECOMP_ROOT/external/$dependency/LICENSE" \
+        "$STAGE/THIRD-PARTY-LICENSES/$dependency.txt"
+done
 [[ -n "$LICENSE_DIR" ]] || fail 'set MZM_WINDOWS_LICENSE_DIR to verified redistribution notices'
 for notice in SIL-OFL-1.1.txt CC-BY-SA-4.0.txt; do
     [[ -f "$LICENSE_DIR/$notice" ]] || fail "missing font license $notice in MZM_WINDOWS_LICENSE_DIR"
