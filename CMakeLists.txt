@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(MZMRecomp VERSION 0.1.0 LANGUAGES C CXX)
+if(WIN32)
+    enable_language(RC)
+endif()
 include(CTest)
 
 set(CMAKE_C_STANDARD 11)
@@ -91,8 +94,13 @@ set(GAME_RECOMPILED_SOURCES ${GAME_GENERATED_SOURCES})
 list(FILTER GAME_RECOMPILED_SOURCES INCLUDE REGEX
     "/recompiled_[0-9]+\\.cpp$")
 if(GAME_RECOMPILED_SOURCES)
+    if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set(_mzm_guest_options /O1)
+    else()
+        set(_mzm_guest_options -O1 -g0)
+    endif()
     set_source_files_properties(${GAME_RECOMPILED_SOURCES} PROPERTIES
-        COMPILE_OPTIONS "-O1;-g0")
+        COMPILE_OPTIONS "${_mzm_guest_options}")
 endif()
 
 target_include_directories(MZMRecomp PRIVATE
@@ -103,14 +111,26 @@ target_include_directories(MZMRecomp PRIVATE
     "${GBARECOMP_ROOT}/src/debug"
 )
 
-target_link_libraries(MZMRecomp PRIVATE
-    "-Wl,--start-group"
-    gbarecomp_runtime
-    gbarecomp_debug
-    gbarecomp_gba
-    gbarecomp_armv4t
-    "-Wl,--end-group"
-)
+if(APPLE OR MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    # Apple and MSVC-style linkers resolve archive cycles without GNU groups.
+    target_link_libraries(MZMRecomp PRIVATE
+        gbarecomp_runtime gbarecomp_debug gbarecomp_gba gbarecomp_armv4t
+        gbarecomp_runtime gbarecomp_debug gbarecomp_gba gbarecomp_armv4t)
+else()
+    # GNU ld and GNU-style MinGW/Clang linkers need an archive group.
+    target_link_libraries(MZMRecomp PRIVATE
+        "-Wl,--start-group"
+        gbarecomp_runtime gbarecomp_debug gbarecomp_gba gbarecomp_armv4t
+        "-Wl,--end-group")
+endif()
+
+if(WIN32)
+    set(MZM_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-recompiled.ico")
+    configure_file(assets/windows/mzm-recompiled.rc
+        "${CMAKE_CURRENT_BINARY_DIR}/mzm-recompiled.rc" @ONLY)
+    target_sources(MZMRecomp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/mzm-recompiled.rc")
+    gbarecomp_target_link_host_stack(MZMRecomp PRIVATE)
+endif()
 
 target_compile_definitions(MZMRecomp PRIVATE
     GBARECOMP_WINDOW_TITLE="MZM-Recomp"
@@ -411,7 +431,7 @@ if(MZM_RECOMP_UI)
         find_package(SDL2 REQUIRED)
         target_link_libraries(mzm_launcher_ui PUBLIC SDL2::SDL2)
         if(WIN32)
-            target_link_libraries(mzm_launcher_ui PUBLIC opengl32)
+            target_link_libraries(mzm_launcher_ui PUBLIC opengl32 shell32)
         endif()
 
         target_link_libraries(MZMRecomp PRIVATE mzm_launcher_ui)
