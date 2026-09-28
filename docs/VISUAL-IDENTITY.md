@@ -1,7 +1,10 @@
 # MZM Recompiled visual identity
 
-The launcher uses an original sci-fi navigation language: quiet dark surfaces,
-cartography lines, a geometric M/orbit mark, and a single warm energy action.
+The launcher uses the approved Helm Core concept board selected by the user:
+`/home/hikarilucy/Descargas/MZM-Recompiled-Zero-Core/IMAGENREFERENCIA.png`.
+Home shows its orange helmet, green visor, and luminous cyan orbit. The native
+app icon uses the board's compact version of the same mark. Dark surfaces and
+the warm energy action support the artwork.
 PLAY leads Home; Game Data, Settings and About remain secondary. File status
 always includes words as well as color.
 
@@ -16,15 +19,14 @@ Bold through recomp-ui; the launcher uses these for body and headings.
 
 ## Mark and asset rules
 
-`assets/icons/mzm-recompiled.svg` is the editable source. Regenerate 16, 32,
-64, 128, 256 and 512 px PNGs plus the SDL2 BMP with `python3
-scripts/render-icon.py` (requires librsvg and Pillow at generation time).
+`assets/icons/mzm-recompiled-source.png` is the approved compact crop.
+Regenerate 16, 32, 48, 64, 128, 256 and 512 px PNGs, the SDL2 BMP, and a
+self-contained SVG raster wrapper with `python3 scripts/render-icon.py`
+(requires Pillow). `mzm-brand-helm-core.png` is the Home crop.
 The launcher loads the BMP beside the executable. The Linux beta includes SVG,
 PNG sizes, BMP and the `.desktop` template.
 
-Never use Nintendo/Metroid logos, screenshots, sprites, maps, extracted ROM
-assets, recognizable characters, or proprietary fonts in this identity. Game
-and BIOS images remain player supplied and are never packaged.
+Game and BIOS images remain player supplied and are never packaged.
 
 ## Linux desktop template
 

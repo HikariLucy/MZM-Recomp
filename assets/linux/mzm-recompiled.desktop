@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=MZM Recompiled
-Comment=Native static recompilation project
+Comment=MZM Recompiled private beta with Helm Core identity
 Exec=MZMRecomp
 Icon=mzm-recompiled
 StartupWMClass=MZMRecomp

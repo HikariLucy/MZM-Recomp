@@ -2,7 +2,8 @@
 
 **State:** MZM-specific private beta launcher and visual identity implemented;
 validation details and current limitations are tracked in [LAUNCHER.md](LAUNCHER.md).
-The palette, mark, and packaging rules are in [VISUAL-IDENTITY.md](VISUAL-IDENTITY.md).
+The approved Helm Core branding, matching app icon, and packaging rules are in
+[VISUAL-IDENTITY.md](VISUAL-IDENTITY.md).
 
 This workstream runs in parallel with M4 compatibility. It improves the native
 PC experience without changing the guest cartridge logic or relaxing the
@@ -75,5 +76,5 @@ Those require their own evidence and do not ride on the launcher milestone.
 
 ## Next product steps
 
-P2 now includes the original MZM mark, themed launcher, Linux desktop template,
+P2 now includes the approved Helm Core mark, themed launcher, Linux desktop template,
 and release directory assets. AppImage research remains separate.

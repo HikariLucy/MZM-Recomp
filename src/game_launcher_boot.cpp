@@ -3,6 +3,7 @@
 #include "mzm_theme.h"
 #include "mzm_log.h"
 #include "launcher_files.h"
+#include "launcher_gl.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
@@ -59,20 +60,6 @@ void file_row(const char* name, const char* hint, const char* action,
     if (ImGui::Button(action, ImVec2(164, 0))) pick(name, patterns, path);
     status(name, error, path.data());
     ImGui::PopID();
-}
-void brand_mark(ImVec2 center, float size) {
-    auto* dl = ImGui::GetWindowDrawList();
-    const float r = size * .47f;
-    const ImU32 cool = ImGui::ColorConvertFloat4ToU32(mzm::theme::cool);
-    const ImU32 orange = ImGui::ColorConvertFloat4ToU32(mzm::theme::energy);
-    dl->AddCircle(center, r, IM_COL32(55, 183, 200, 85), 64, 1.5f);
-    dl->AddCircle(center, r * .68f, IM_COL32(55, 183, 200, 145), 64, 1.5f);
-    const float x = center.x, y = center.y, m = size * .31f;
-    dl->AddLine(ImVec2(x-m, y+m*.65f), ImVec2(x-m, y-m*.63f), cool, 5);
-    dl->AddLine(ImVec2(x-m, y-m*.63f), ImVec2(x, y+m*.11f), cool, 5);
-    dl->AddLine(ImVec2(x, y+m*.11f), ImVec2(x+m, y-m*.63f), orange, 5);
-    dl->AddLine(ImVec2(x+m, y-m*.63f), ImVec2(x+m, y+m*.65f), orange, 5);
-    dl->AddCircleFilled(ImVec2(x+m*.87f, y-m*.86f), 4, orange);
 }
 void background(ImVec2 vp) {
     auto* dl = ImGui::GetBackgroundDrawList();
@@ -176,6 +163,10 @@ int game_launcher_preboot(std::vector<std::string>& args,
     if (!body) ImGui::GetIO().Fonts->AddFontDefault();
     ImGui_ImplSDL2_InitForOpenGL(window, gl);
     ImGui_ImplOpenGL3_Init("#version 330");
+    const fs::path brand_path = fs::absolute(args.front()).parent_path()
+        / "assets/icons/mzm-brand-helm-core.png";
+    LauncherTexture helm = launcher_texture_load(brand_path.string().c_str());
+    if (!helm.id) std::fprintf(stderr, "[mzm-launcher] brand unavailable: %s\n", brand_path.string().c_str());
     bool running = true, play = false;
     while (running) {
         SDL_Event event;
@@ -258,10 +249,15 @@ int game_launcher_preboot(std::vector<std::string>& args,
             ImGui::BeginChild("##hero", ImVec2(0, hero_h), true);
             const ImVec2 p = ImGui::GetWindowPos();
             const ImVec2 s = ImGui::GetWindowSize();
-            const float mark_size = std::min(135.f, hero_h*.42f);
-            const float hero_offset = std::max(0.f, (hero_h-mark_size-146.f)*.5f);
-            brand_mark(ImVec2(p.x+s.x*.5f, p.y+hero_offset+mark_size*.62f+4), mark_size);
-            ImGui::SetCursorPosY(hero_offset+mark_size+14);
+            const float mark_h = std::min(235.f, hero_h*.46f);
+            const float mark_w = helm.h ? mark_h * helm.w / helm.h : 0.f;
+            const float hero_offset = std::max(0.f, (hero_h-mark_h-146.f)*.5f);
+            if (helm.id) {
+                const ImVec2 top(p.x+(s.x-mark_w)*.5f, p.y+hero_offset+8.f);
+                ImGui::GetWindowDrawList()->AddImage((ImTextureID)(intptr_t)helm.id,
+                    top, ImVec2(top.x+mark_w, top.y+mark_h));
+            }
+            ImGui::SetCursorPosY(hero_offset+mark_h+14);
             if (bold) ImGui::PushFont(bold);
             const char* title = "MZM RECOMPILED";
             ImGui::SetCursorPosX((s.x-ImGui::CalcTextSize(title).x)*.5f);
@@ -335,6 +331,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
         }
         SDL_GL_SwapWindow(window);
     }
+    launcher_texture_free(&helm);
     ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplSDL2_Shutdown(); ImGui::DestroyContext();
     SDL_GL_DeleteContext(gl); SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
