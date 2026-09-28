@@ -32,8 +32,9 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
 | MZM cartridge static-analysis scan | **CONFIRMED** | First configured discovery/codegen pass succeeded: 28,346 translation roots, 49 ARM / 28,297 Thumb, 9,540 indirect transfers, 335 auto jump tables / 8,675 targets, `undefined=0`; IRQ IWRAM code-copy emitted and dispatched |
 | Hardware support matrix qualification | **CONFIRMED** | Final configured run reports `code_copies=5`, `undefined=0`, exit 0; clipdata RAM dispatch is emitted; mosaic/haze/WAITCNT/SRAM stack-code risks are bounded and assigned to later validation/work |
-| Generated native C++ corpus | **CONFIRMED** | GBARecomp emits 16 shards plus dispatch/symbol metadata from the verified ROM; compilation into the first MZM host executable remains M1A |
-| M1 minimal host scaffold | **CONFIRMED** | CMake runner + minimal `run_game` host + reproducible generation/build scripts committed; local compile validation pending |
+| Generated native C++ corpus | **CONFIRMED** | GBARecomp emits 16 shards plus dispatch/symbol metadata from the verified ROM |
+| M1 minimal host scaffold | **CONFIRMED** | CMake runner + minimal `run_game` host + reproducible generation/build scripts committed and compiled successfully |
+| M1A host build | **CONFIRMED** | `MZMRecomp` linked successfully as a Linux x86-64 ELF; 16 generated shards compiled without hand edits; `--help` runs |
 | First native MZM instruction executed | **PENDING** | M1B |
 | Boot/intro/title | **PENDING** | M2 |
 | Controllable Samus | **PENDING** | M3 |

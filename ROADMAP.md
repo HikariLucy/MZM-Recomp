@@ -182,12 +182,15 @@ Residual risks are tracked, bounded, and do not prevent M1 bootstrap:
 
 ### M1A — Generation
 
-- MZM-specific cartridge config.
-- ROM identity guard.
-- ARM + Thumb discovery.
-- Initial code-copy declarations.
-- Initial indirect-target declarations.
-- Generated C++ compiles without hand editing generated files.
+- [x] MZM-specific cartridge config.
+- [x] ROM identity guard.
+- [x] ARM + Thumb discovery.
+- [x] Initial fixed code-copy declarations.
+- [x] Decomp-derived semantic seeds/indirect discovery baseline.
+- [x] Generated C++ compiles without hand editing generated files.
+- [x] Minimal Linux host links successfully.
+
+**Gate:** generated MZM corpus + pinned GBARecomp runtime link into a native Linux executable. **PASSED 2026-09-28.**
 
 ### M1B — First execution
 

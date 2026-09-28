@@ -1,7 +1,7 @@
 # M1 — Static Bootstrap
 
 **Started:** 2026-09-28  
-**State:** **ACTIVE**
+**State:** **M1A PASSED / M1B ACTIVE**
 
 M0 established feasibility. M1 changes the question from "can this architecture represent MZM?" to "can the generated MZM corpus be compiled and executed as a native Linux host process?"
 
@@ -30,6 +30,18 @@ Never hand-edit generated translation units. Fix configuration, analyzer/runtime
 5. CMake configures against the pinned GBARecomp checkout;
 6. all generated shards compile without manual edits;
 7. `MZMRecomp` links successfully on Linux.
+
+M1A result:
+
+```text
+16 generated shards compiled
+MZMRecomp linked at 100%
+output: Linux x86-64 ELF
+size: ~49 MiB
+--help: PASS
+```
+
+M1A is **CONFIRMED / PASSED**.
 
 A successful M1A build is **not** yet evidence that guest execution works.
 
