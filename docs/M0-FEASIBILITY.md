@@ -190,14 +190,31 @@ If these conditions pass, the project moves from feasibility into M1 implementat
 | ID | Work package | State |
 |---|---|---|
 | M0.1 | ROM identity | **CONFIRMED** |
-| M0.2 | Decomp reproducibility | **PENDING final evidence** |
+| M0.2 | Decomp reproducibility | **BLOCKED — host ARM binutils missing** |
 | M0.3 | Semantic address/symbol map | PENDING |
 | M0.4 | GBARecomp Linux qualification | PENDING |
 | M0.5 | MZM static-analysis scan | PENDING |
 | M0.6 | Hardware support matrix | PENDING |
 | M0.7 | Duplicate/upstream positioning | **Initial audit confirmed** |
 
-## 10. Final M0 decision format
+## 10. Current M0.2 execution result
+
+The first Linux reproducibility attempt reached the extractor successfully and confirmed the intended upstream pins, but did not produce `mzm_us.gba`.
+
+The failure is currently attributed to missing host toolchain executables:
+
+```text
+arm-none-eabi-as: not found
+arm-none-eabi-ar: not found
+```
+
+That caused the `agbcc` library build to fail and later caused the MZM build to stop on `asm/audio_internal.o`.
+
+Interpretation: **environment/toolchain blocker only**. No conclusion about MZM static-recompilation feasibility should be drawn from this failure.
+
+Next gate action: install/verify the ARM binutils package, rebuild `agbcc`, rerun the MZM build, then require SHA-1 equality and byte-for-byte identity.
+
+## 11. Final M0 decision format
 
 When M0 closes, this document will end with one of:
 
