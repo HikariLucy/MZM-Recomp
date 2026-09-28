@@ -1,8 +1,8 @@
 # MZM-Recomp — Status
 
 **Last updated:** 2026-09-28  
-**Current phase:** M0 — Feasibility  
-**Current verdict:** **GO WITH CONDITIONS**
+**Current phase:** M1 — Static bootstrap  
+**M0 verdict:** **PASSED / GO**
 
 This file is intentionally conservative. A capability is not marked complete because it "should work"; it is marked complete only when reproducible evidence exists.
 
@@ -31,8 +31,8 @@ This file is intentionally conservative. A capability is not marked complete bec
 | Export semantic symbol/address map | **CONFIRMED** | Reproducible CSV maps 21,082 ROM-range symbols using 15,575 ARM ELF mapping symbols; boot, HALT/VBlank, Intro, Title and File Select anchors are captured with ISA/source metadata |
 | Build/qualify GBARecomp on Linux | **CONFIRMED** | Pinned framework built successfully on Ubuntu Linux; CTest passed 34/34; host/toolchain/SDL2 inventory captured; `gba_recompile`, `gba_scan`, and `bios_smoke` verified |
 | MZM cartridge static-analysis scan | **CONFIRMED** | First configured discovery/codegen pass succeeded: 28,346 translation roots, 49 ARM / 28,297 Thumb, 9,540 indirect transfers, 335 auto jump tables / 8,675 targets, `undefined=0`; IRQ IWRAM code-copy emitted and dispatched |
-| Hardware support matrix qualification | **EXPERIMENTAL** | IRQ + audio copies are qualified; fixed clipdata copy is now pinned/configured (`0x030016C4 <- 0x08057F7C`, `0x280`, Thumb) and awaits one regeneration check; haze/mosaic ownership plans are documented |
-| First generated native C++ | **PENDING** | M1 |
+| Hardware support matrix qualification | **CONFIRMED** | Final configured run reports `code_copies=5`, `undefined=0`, exit 0; clipdata RAM dispatch is emitted; mosaic/haze/WAITCNT/SRAM stack-code risks are bounded and assigned to later validation/work |
+| Generated native C++ corpus | **CONFIRMED** | GBARecomp emits 16 shards plus dispatch/symbol metadata from the verified ROM; compilation into the first MZM host executable remains M1A |
 | First native MZM instruction executed | **PENDING** | M1 |
 | Boot/intro/title | **PENDING** | M2 |
 | Controllable Samus | **PENDING** | M3 |
@@ -114,7 +114,33 @@ With `IntrMain -> gInterruptCode`, the regenerated corpus reports `code_copies=4
 
 Remaining executable-RAM inventory work is centered on the clipdata helper for gameplay, the mutable same-PC haze buffer, and later/deferred Chozodia/NES paths.
 
-M0.6 remains **EXPERIMENTAL** until that executable-RAM inventory is pinned and the two gaps have an explicit implementation/deferral plan.
+Final M0.6 qualification added the fixed gameplay clipdata copy:
+
+```text
+clipdataCode 0x030016C4 <- ClipdataConvertToCollision 0x08057F7C
+size=0x280
+mode=Thumb
+```
+
+The final configured discovery/codegen run reports:
+
+```text
+exit=0
+undefined=0
+code_copies=5
+TOTAL emitted=28411
+codegen shards=16
+```
+
+and emits `gf_clipdatacode_entry` at `0x030016C4` in the symbol map, header, and dispatch table.
+
+M0.6 is therefore **CONFIRMED**. The remaining known items — PPU mosaic, mutable same-PC `hazeCode`, WAITCNT/prefetch accuracy, stack-local SRAM helper execution, Chozodia HBlank code, and NES Metroid dynamic code — are tracked as bounded M1–M4 work rather than M0 feasibility blockers.
+
+## M0 exit decision
+
+**M0 — Feasibility: PASSED / GO.**
+
+All M0 exit criteria are satisfied with reproducible evidence. MZM-Recomp may proceed to **M1 — Static bootstrap**. This decision is a feasibility result only; it is not a claim of a playable native build or strict-static runtime closure.
 
 ## Confirmed cartridge identities
 

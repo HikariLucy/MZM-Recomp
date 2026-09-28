@@ -10,11 +10,11 @@ The project aims to run the original game logic as native host code using [GBARe
 
 ## Project status
 
-**Current phase:** M0 — Feasibility
+**Current phase:** M1 — Static bootstrap
 
-**Verdict:** **GO WITH CONDITIONS**
+**M0 verdict:** **PASSED / GO**
 
-The project is technically promising, but native gameplay is **not yet claimed**. M0 exists to establish reproducibility, static-recompilation feasibility, hardware/runtime coverage, and a clean legal/technical boundary before implementation begins.
+M0 feasibility is complete and the project has entered M1 static bootstrap. Native gameplay is **not yet claimed**: M1 must first compile the generated corpus into a host executable and execute verified recompiled MZM code.
 
 See [STATUS.md](STATUS.md) for the exact evidence-backed status.
 
@@ -113,7 +113,9 @@ Current source-level audit has identified several areas that must be validated r
 - The unlockable NES Metroid contains substantial code loaded into IWRAM, EWRAM, and VRAM and is expected to be one of the hardest full-compatibility targets.
 - The European build has real code/data/layout differences and must not be treated as a simple language patch.
 
-These do **not** currently block the project, but several are explicit M0/M4 qualification items.
+M0 also identified bounded follow-up work: PPU mosaic is not yet rendered by the pinned runtime; MZM reuses one RAM address for several haze-code variants; WAITCNT/prefetch accuracy needs runtime validation; SRAM uses stack-local copied helpers; and Chozodia/NES paths contain later executable-RAM cases.
+
+These do **not** block M1, but they prevent premature claims of strict-static or full-game compatibility.
 
 ## Existing related work
 

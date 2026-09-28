@@ -2,13 +2,13 @@
 
 **Project:** MZM-Recomp  
 **Date opened:** 2026-09-28  
-**Decision:** **GO WITH CONDITIONS**
+**Decision:** **GO — M0 PASSED**
 
 ## 1. Question
 
 Can **Metroid: Zero Mission (GBA)** be developed as a reproducible, Linux-first native project using static recompilation, without duplicating an equivalent existing public project and without depending on hand-maintained generated code?
 
-Current answer: **probably yes**, subject to the M0 exit conditions below.
+Final M0 answer: **yes for feasibility**. The verified USA target may proceed to M1 static bootstrap; runtime correctness and strict-static closure remain later milestone gates.
 
 ## 2. Cartridge baseline
 
@@ -174,7 +174,7 @@ Implication: this is a dedicated high-risk M4 target. Normal Zero Mission gamepl
 
 ## 8. GO conditions
 
-The project remains **GO WITH CONDITIONS** until all conditions are met:
+The M0 GO conditions were:
 
 1. Reproduce the USA ROM byte-for-byte from the pinned decomp on Linux.
 2. Build and qualify the pinned GBARecomp baseline on Linux without MZM-specific patches.
@@ -183,7 +183,7 @@ The project remains **GO WITH CONDITIONS** until all conditions are met:
 5. Maintain a strict repository boundary around ROMs, BIOS, extracted assets and generated ROM-derived C++.
 6. Maintain transparent differentiation from MZM: Reprimed and other related projects.
 
-If these conditions pass, the project moves from feasibility into M1 implementation.
+All six conditions passed on 2026-09-28. The project therefore moves from feasibility into M1 implementation.
 
 ## 9. M0 work packages
 
@@ -191,11 +191,11 @@ If these conditions pass, the project moves from feasibility into M1 implementat
 |---|---|---|
 | M0.1 | ROM identity | **CONFIRMED** |
 | M0.2 | Decomp reproducibility | **CONFIRMED** |
-| M0.3 | Semantic address/symbol map | PENDING |
-| M0.4 | GBARecomp Linux qualification | PENDING |
-| M0.5 | MZM static-analysis scan | PENDING |
-| M0.6 | Hardware support matrix | PENDING |
-| M0.7 | Duplicate/upstream positioning | **Initial audit confirmed** |
+| M0.3 | Semantic address/symbol map | **CONFIRMED** |
+| M0.4 | GBARecomp Linux qualification | **CONFIRMED** |
+| M0.5 | MZM static-analysis scan | **CONFIRMED** |
+| M0.6 | Hardware support matrix | **CONFIRMED** |
+| M0.7 | Duplicate/upstream positioning | **CONFIRMED for M0** |
 
 ## 10. M0.2 execution result
 
@@ -215,12 +215,42 @@ The build exited successfully and `cmp` confirmed that the rebuilt `mzm_us.gba` 
 
 **Interpretation:** M0.2 passes. The decomp/toolchain baseline is reproducible on the Linux development host and can now be used as the semantic source for M0.3.
 
-## 11. Final M0 decision format
+## 11. Final M0 decision
 
-When M0 closes, this document will end with one of:
+**GO — M1 may proceed.**
 
-- **GO** — M1 may proceed.
-- **GO WITH CONDITIONS** — specific residual risks remain bounded and documented.
-- **NO-GO** — a fundamental technical or distribution constraint makes the architecture unsuitable.
+Evidence supporting the decision:
+
+- the USA cartridge identity is verified;
+- the pinned decomp rebuild is byte-identical;
+- semantic ROM→ISA→symbol→source mapping is reproducible;
+- pinned GBARecomp builds on Linux and passes 34/34 upstream tests;
+- the verified cartridge scans cleanly and imports 2,722 semantic function seeds with `dropped-in-data=0`;
+- configured static discovery/codegen completes with `undefined=0`;
+- five fixed executable-RAM copies required by boot/normal gameplay are represented and emitted;
+- no fundamental normal-path execution model blocker has been found;
+- remaining gaps have explicit phase ownership.
+
+Final M0.6 static result:
+
+```text
+code_copies=5
+undefined=0
+TOTAL emitted=28411
+codegen shards=16
+gba_recompile exit=0
+```
+
+Known non-blocking risks remain:
+
+- PPU mosaic rendering;
+- mutable same-PC haze code;
+- WAITCNT/prefetch timing accuracy;
+- stack-local SRAM helper execution for strict-static closure;
+- Chozodia HBlank copied code;
+- bundled NES Metroid dynamic executable code;
+- later European-region validation.
+
+These risks prevent claims of full compatibility or strict-static gameplay today, but they do **not** invalidate the selected architecture or block M1 bootstrap.
 
 No percentage-based completion claim replaces these gates.

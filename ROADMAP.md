@@ -128,10 +128,10 @@ Current findings:
 - [x] Identify mutable same-PC `hazeCode` as a strict-static engine gap.
 - [x] Pin and qualify boot-time fixed executable RAM copies (IRQ + audio A/B/C).
 - [x] Pin remaining M0/M3-relevant fixed executable RAM copies (clipdata; later/deferred copies classified separately).
-- [ ] Regenerate once with clipdata mapping and confirm `code_copies=5`, `undefined=0`, and runtime dispatch root.
+- [x] Regenerate once with clipdata mapping and confirm `code_copies=5`, `undefined=0`, and runtime dispatch root.
 - [x] Assign implementation ownership/acceptance criteria for mosaic (generic GBARecomp PPU).
 - [x] Assign implementation ownership/acceptance criteria for mutable code-copy variants (generic GBARecomp dispatch/code-copy support; hybrid allowed during bring-up).
-- [ ] Close M0.6 matrix.
+- [x] Close M0.6 matrix.
 
 Every required subsystem is classified as:
 
@@ -141,6 +141,8 @@ Every required subsystem is classified as:
 - **DEFERRED**
 
 A gap is not automatically a no-go: ordinary framework improvements can be implemented or contributed upstream. A no-go would require a fundamental incompatibility with the intended static-recompilation approach.
+
+**Gate:** runtime/hardware requirements are classified; fixed M0/M3-relevant executable-RAM copies are modeled; remaining gaps are bounded with ownership/acceptance plans. **PASSED 2026-09-28.**
 
 ### M0.7 — Upstream/duplicate audit
 
@@ -160,6 +162,17 @@ M0 closes only if:
 4. Identified ordinary gaps have an upstream/local ownership plan.
 5. Repository boundaries prevent ROM/BIOS/generated copyrighted material from being committed.
 6. Existing related projects remain documented accurately.
+
+**M0 EXIT: PASSED / GO — 2026-09-28.**
+
+Residual risks are tracked, bounded, and do not prevent M1 bootstrap:
+
+- PPU mosaic rendering;
+- mutable same-PC `hazeCode`;
+- WAITCNT/prefetch accuracy;
+- stack-local SRAM executable helpers;
+- late Chozodia HBlank copy;
+- NES Metroid dynamic executable regions.
 
 ---
 
