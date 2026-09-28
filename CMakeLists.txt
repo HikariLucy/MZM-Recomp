@@ -33,6 +33,7 @@ endif()
 
 add_executable(MZMRecomp
     src/main.cpp
+    src/mzm_ram_dispatch.cpp
     ${GAME_GENERATED_SOURCES}
 )
 
@@ -47,6 +48,7 @@ if(GAME_RECOMPILED_SOURCES)
 endif()
 
 target_include_directories(MZMRecomp PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/generated"
     "${GBARECOMP_ROOT}/src/armv4t"
     "${GBARECOMP_ROOT}/src/gba"
     "${GBARECOMP_ROOT}/src/runtime"

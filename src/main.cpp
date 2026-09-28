@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "runtime.h"
+#include "mzm_ram_dispatch.h"
 
 namespace {
 
@@ -23,6 +24,8 @@ int main(int argc, char** argv) {
             return 0;
         }
     }
+
+    mzm_install_ram_dispatch_hook();
 
     gbarecomp::RunOptions opts;
     opts.builtin_game_name = "Metroid: Zero Mission";

@@ -37,7 +37,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | M1 minimal host scaffold | **CONFIRMED** | CMake runner + minimal `run_game` host + reproducible generation/build scripts committed and compiled successfully |
 | M1A host build | **CONFIRMED** | `MZMRecomp` linked successfully as a Linux x86-64 ELF; 16 generated shards compiled without hand edits; `--help` runs |
 | First native MZM execution | **CONFIRMED** | M1B hybrid run completed successfully with static-recompiled backend, 5,193,795 native calls, ~43.9k presented frames, `unmapped=0`, `io_unhandled=0`; 18 dispatch misses were bridged/self-healed and remain static-coverage debt |
-| M2A miss classification | **EXPERIMENTAL** | 18 first-run misses split into 9 BIOS roots already covered by upstream BIOS config and 9 high-IWRAM Thumb roots strongly consistent with MZM stack-local SRAM helpers; BIOS static generation is next |
+| M2A miss classification | **EXPERIMENTAL** | Static BIOS linkage removed every BIOS miss; 8 remaining high-IWRAM Thumb misses are now proven to arise from transient stack-local SRAM helper execution; byte-verified RAM canonicalizer implementation committed for validation |
 | Boot/intro/title | **PENDING** | M2 |
 | Controllable Samus | **PENDING** | M3 |
 | Strict-static gameplay route | **PENDING** | M3 |
@@ -246,3 +246,28 @@ reset → startup → InitializeGame → intro → title
 ```
 
 first in hybrid mode and later under the strict-static gate.
+
+
+## M2A SRAM stack-code result
+
+After linking the locally recompiled BIOS, all BIOS dispatch misses disappeared. The next run produced only eight Thumb misses in `0x03007D08..0x03007D90`.
+
+The decomp/ELF disassembly proves that:
+
+- `SramWriteUnchecked()` reserves `0x80` bytes on the guest stack, copies `SramWriteUncheckedInternal` into that local array, then calls `sp|1`;
+- `SramCheck()` reserves `0xC0` bytes, copies `SramCheckInternal` into that local array, then calls `sp|1`;
+- the System-mode stack base is `0x03007E60`;
+- with a top-level `SramCheck()` frame, the local buffer begins exactly at `0x03007D90`, one of the observed misses.
+
+Therefore the miss fragment's automatic "jump-table candidate" label is rejected for this range. These are transient copied-code entries whose absolute addresses vary with stack depth.
+
+GBARecomp exposes `RuntimeRamDispatchHook` specifically for byte-verified position-independent code copied into transient RAM / moving stack frames. MZM-Recomp now installs a hook that recognizes exact runtime copies of:
+
+```text
+SramWriteUncheckedInternal 0x080051D4 size=0x24 Thumb
+SramCheckInternal          0x0800529C size=0x30 Thumb
+```
+
+and dispatches their already-generated native canonical translations.
+
+Validation is still pending; strict-static is not claimed until a fresh cache-free run reports zero unexpected misses.
