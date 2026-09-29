@@ -79,6 +79,15 @@ int main(int argc, char** argv) {
     check(runtime_has_static_entry(0x08087938u, 1), "public ROM root absent");
     expect_strict_miss(bus, 0x03001730u);
     expect_strict_miss(bus, 0x03001752u);
+    // The same union address contains clipdata in another phase. Dispatch
+    // with its actual ROM bytes must decline Chozodia and miss safely.
+    for (std::uint32_t i = 0; i < mzm_chozodia::kCopySize; ++i)
+        bus.write8(mzm_chozodia::kRuntimeStart + i,
+                   rom[0x08057F7Cu - 0x08000000u + 0x6Cu + i]);
+    expect_strict_miss(bus, 0x03001730u);
+    for (std::uint32_t i = 0; i < mzm_chozodia::kCopySize; ++i)
+        bus.write8(mzm_chozodia::kRuntimeStart + i,
+                   rom[mzm_chozodia::kSourceStart - 0x08000000u + i]);
     check(g_runtime_ram_dispatch_hook(0x0300175Au, 1) == 0,
           "literal data was accepted as a private resume PC");
 
