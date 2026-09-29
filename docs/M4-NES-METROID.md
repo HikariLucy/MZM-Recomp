@@ -362,3 +362,53 @@ scripts/derive-nes-emulator-map.py --elf ... --emit-candidate .local/nes-map-can
 - Oracle compare vs the local nested ELF: PASS (6 images, 374 runs, 388 seeds).
 - Clean tree (no `.local`, no ELF, no arm-none-eabi in PATH): `generate-m1.sh` PASS twice from scratch; the two corpora are byte-identical to each other and to the pre-change corpus (tree hash `e1741bf6...`); no `/home`, `.local`, `.elf` or scratch path appears in generated output.
 - Full build + CTest 61/61; Python 14/14 (9 + 5 new).
+
+## NES-3 behavioural qualification (2026-09-29): soak, input, gameplay (PARTIAL)
+
+Status: **PARTIAL.** Soak, input and first gameplay pass strict-static; a first behavioural frontier was captured (Part 1 resident handlers, frame 3068); audio is silent because of a new generic GBARecomp gap. GBARecomp stays at `2c40fe8`; no GBARecomp or production-runtime file was changed. The harness is `tests/m4/nes_behavior_test.cpp` (CMake target `mzm_nes_behavior_test`), driven by `scripts/run-nes-behavior.py` (CTest `mzm-nes-behavior`, ~2 min; `--mode soak` is manual, ~7 min).
+
+### Input route
+
+The test injects input with `bus.io().set_keyinput(active-low mask)`, the call `runtime.cpp` uses for host polling (line ~4022) and for `GBARECOMP_INPUT_REPLAY`, once at a frame boundary. It composes with the synthesised mask into `REG_KEYINPUT` (`0x04000130`, active low; A=bit0, B=1, SELECT=2, START=3, RIGHT=4, LEFT=5, UP=6, DOWN=7). Guest memory is never written. Script format: `MZM_NES_INPUT="frame:KEY[+KEY]:hold,..."`.
+
+### N1/N2 soak (no input)
+
+Two 10,000-frame runs. Every reported line was identical between runs (checkpoints every 1,000 frames, hashes, audio hash). Strict counters `dispatch_misses=0 interpreted_insns=0 unmapped=0 io_unhandled=0`, host return depth 0, IRQ depth 0 (max 0), resolver failures 0, no frontier. IRQ vector entries 44,235 (2,603 at frame 600, as NES-2b). Title frame hashes (fnv1a64 of the latched frame):
+
+| Frame | Hash | Content |
+|---:|---|---|
+| 600 | `CB0431A65E6BD988` | title (same as NES-2b) |
+| 1200 | `ED2F86A12FF98046` | intro scene (planet, no text) |
+| 3000 | `C78BDE19BAE7E475` | intro scene |
+| 6000 | `D9CAEFDA86152DD6` | title again |
+| 10000 | `569682311AAA43C8` | (final line) |
+
+Without input the game cycles title <-> attract scene by itself: hashes are not constant by design (palette fade/animation, 693 distinct frames sampled every 10 frames) and are neither black nor frozen.
+
+### N3-N6 START, post-title state, input effect
+
+`START` at frame 700 (hold 8): the frame changes from the title (`E4A220128A80B933`) to the START/CONTINUE menu (`16E0720AC211F04B`, 4 colours, stable from frame 720). `SELECT` (hold 8) toggles the cursor (`59D671E2FA30C813`) and a second `SELECT` returns to the menu hash. A second `START` at frame 1000 enters gameplay: the first Brinstar room (`EN..30` HUD, Samus, enemies). In gameplay the state is stable until ~frame 1500 (intro jingle), then evolves; `RIGHT` held from frame 1650 scrolls the room and moves Samus, `A` makes Samus jump, and Samus takes enemy damage (`EN..30` -> `EN..22`). Frames at 1700/1760/1830 differ from the no-input control. Frames were inspected visually from PPM dumps (`MZM_NES_FRAME_DUMP_DIR`); no external pixel oracle. The menu is toggled by SELECT, as in the NES original, not by the D-pad.
+
+### N4 first behavioural frontier (frame 3068)
+
+Scripted play session (RIGHT/A/B/LEFT/DOWN/UP cycles from frame 1700, a START pause at 3010): at **frame 3068** `dispatch_misses=1`, `interpreted_insns=2478`, Part 1 `verify_fail=1`. The recorded miss is **Part 1 `0x06006E08` ARM** (`tst r0,#0x80` ..., a PPU-register handler), entered from Part 2's IRQ path. Determinism: two runs reproduce it identically.
+
+Cause (measured): Part 1 is two different things. Its first `0xE00` bytes (`0x06006000..0x06006E00`, init code) are overwritten by graphics from frame ~13 on (2,460 dirty bytes at the stop, buckets `000..D00` all dirty), and the earlier "no entry after that" observation held only for that half. The second half (`0x06006E00..0x06007240`, buckets `E00..1200` = 0 dirty bytes) holds resident PPU handlers that the running game re-enters. The runtime byte gate covers the whole image, so the first legitimate entry into the resident half after the init half was overwritten fails closed. This is a gate/map design issue on the MZM side (split Part 1 into init and resident verification scopes with their own literal pools), not evidence of bad code. It was not fixed here because a gate change alters the security-relevant verification policy and needs its own review (proposed milestone **NES-3b**). CTest pins the frontier (frame, PC, miss, verify failure, dirty buckets) so that a fix must update the pin deliberately.
+
+### N7 audio audit: PARTIAL
+
+Internal evidence over the title and gameplay runs: `EmulatorAudio_Initialize` and `SetupOutput` once; `EmulatorAudio_WriteToApu` (`0x03000408`) 4,108 calls in 1,300 frames writing real APU registers (`$4011,$4015,$4017`, then pulse/triangle/noise `$4000..$400F`); `Timer1Callback` and `ProcessApuAndMixBuffers` about every 2 frames; the guest IWRAM mix buffer holds non-zero samples (139/768 bytes). DMA1 is programmed `CNT=0xB2000004` with `DAD=0x040000A0` (FIFO A) and a moving `SAD` (`0x03005DD0`/`0x03005F10`), `SOUNDCNT_H=0x0304` (FIFO A to both sides, timer 1), `SOUNDCNT_X=0x0080`, timer 1 cascaded with IRQ. Host side: `dma1_runs=0`, FIFO A `count=w=r=0`, and the capture ring is all zeros for 10.9 M samples.
+
+Root cause candidate, confirmed by a diagnostic: `GBARecomp/src/gba/gba_io.cpp:400` (`run_sound_fifo_dma`) returns unless DMA `CNT_H` bit 10 (32-bit) is set. On hardware, FIFO-mode DMA is always 32-bit and ignores that bit; the NES emulator programs `0xB200`. Forcing bit 10 from the test harness (`MZM_NES_DIAG_FORCE_FIFO32=1`, diagnostic only, never used for qualification) gives 8,577 DMA runs, 34,308 words and 240,586 non-zero mixed samples, still strict-clean. This is a **new generic GBARecomp gap**; per the campaign rule upstream was not edited. Audio stays PARTIAL until that is fixed and an audio oracle exists.
+
+### N8 SRAM / password
+
+Observed only, nothing forced: `EmulatorLoadFromSram` (`0x0203E414`) runs twice at boot; `EmulatorRetrieveGameOverPassword` (`0x0203E000`) and `EmulatorFillPasswordWithSaved` (`0x0203E118`) run about once per frame; `EmulatorSaveToSram`, `SaveToPasswordBytes` and `LoadFromPasswordBytes` are never called; SRAM is never written (snapshot compared every 30 frames, dirty flag clear) across the soak and the start/play sessions. Save/password stays UNVERIFIED and needs its own milestone.
+
+### N9 quit, N10 strict
+
+Quit was not attempted (no natural route yet; internal functions were not called). Strict counters were zero in every run up to the frontier; the frontier run stops at the first non-zero, as required.
+
+### Validation
+
+See the matrix (`docs/M4-COMPATIBILITY-MATRIX.md`, recomputed from the table).
