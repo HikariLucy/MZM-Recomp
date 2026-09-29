@@ -35,8 +35,6 @@ is fully verified in `tests/m4/nes_payload_frontier_test.cpp`.
 - Strict-static payload execution executes natively, writes WAITCNT `0x0014` at `0x03007408`, drives DMA setup and transfers, and reaches the first dynamic frontier posterior to the payload at `0x06006558` ARM (VRAM).
 - Host call stack depth is 0; dispatch misses: 0; interpreted instructions: 0; unmapped bus/IO: 0.
 
-**Next target: NES-2.** Payload execution through all custom decompression and DMA stages to NES emulator execution in VRAM:
-- Decompress and reconstruct the six NES emulator executable parts from the user's USA ROM.
-- Ingest VRAM/IWRAM/EWRAM emulator images via `[[executable_image]]`.
-- Recompile emulator Part 1 (`0x06006558` ARM) and associated cross-part call graph.
-- Execute strict-static into the NES emulator core.
+**NES-2 is QUALIFIED (PASS) for the initialisation phase.** From `0x087D8000` the real chain runs native and strict-static through loader, payload, `0x06006558`, and cross-image transfers among Parts 1/6/5/4 with per-entry byte gates (six guest images byte-identical to ROM-derived images), reaching a reproducible frontier at **`0x03000488` Thumb (`EmulatorAudio_Initialize`, Part 2, IWRAM)** with `dispatch_misses=0 interpreted_insns=0 unmapped=0 io_unhandled=0`. See `docs/M4-NES-METROID.md` (image/mutability table, frontier, gaps).
+
+**Next target (from the real frontier): GBARecomp image-scoped private CFG (Gap B).** Part 2 cannot be generated because its IWRAM addresses alias MZM's public `code_copy` entries (`[finder] private CFG conflicts with public entry at 0x030041EC`) and `data_range`/`visited_` are address-global. This needs a reviewed generic GBARecomp change (key private CFG nodes and data ranges by image; drop the private-vs-public conflict when images differ) with the synthetic test in the NES-2 doc, then re-declaring Part 2 and re-running `mzm-nes-emulator-frontier`. The second, smaller gap (Part 5 `ldrne pc,[pc,Rn,lsl #2]` table idiom at `0x0600E474`) should be fixed in the same round. NES-3 (first frame, IRQ delivery, audio) follows.

@@ -196,3 +196,75 @@ Milestone **NES-1b** is fully qualified and verified.
 - GBARecomp CTest: **51/51 PASS**.
 - Pytest: **9/9 PASS**.
 - M4 regression suite: Cases 01, 02, 03 **PASS** (Case 03: 317 frames, `WAITCNT=0x45B4`, `final_pc=0x000001b4`).
+
+## NES-2 qualification (2026-09-29): emulator initialisation frontier (PASS, Part 2 blocked upstream)
+
+Route, all native, strict-static, no interpreter, no self-heal, from the legal local ROM only:
+
+```
+0x087D8000 ARM -> loader -> BIOS LZ77 -> 0x03007400 payload (AOT) -> 0x06006558 ARM (Part 1)
+  -> Part 6 SRAM probe (0x0203E414) -> Part 5 (0x0600E4E8) -> Part 1 (0x06006890, 0x060068D4)
+  -> Part 5 Thumb LZ77 loop (0x0600E048, 1395 native entries) -> Part 4 boot (0x0600C00C)
+  -> Part 1 font setup (0x06006000) -> Part 5 sub_0600E1C4 (IE=0x2031 IF=0xFFFF IME=1)
+  -> bx r4 -> 0x03000488 Thumb = EmulatorAudio_Initialize (Part 2)   <-- new frontier
+```
+
+`tests/m4/nes_emulator_frontier_test.cpp` (CTest `mzm-nes-emulator-frontier`) runs the whole chain from `0x087D8000`. Phase A reproduces NES-1b exactly (`PC=0x06006558 ARM SP=0x03007EF8 LR=0x087D8004 CPSR=0x6000001F`, WAITCNT `0x0014`) and asserts the six guest images equal the ROM-derived images byte for byte. Phase B lifts the NES-1b stop and runs to the first verified emulator PC with no native entry.
+
+### Image table (all six guest-matched at `0x06006558`)
+
+| Part | Runtime range | Size | Whole-image SHA-256 | Guest match | Mutability observed to the frontier | Corpus |
+|---|---|---:|---|---|---|---|
+| 1 | VRAM `0x06006000..0x06007240` | `0x1240` | `eff34fbc387676a159dce57aff8089a2d6e355eaf96ecdef32155422c14da6d5` | yes | **SELF-MODIFYING**, 2 bytes `0x06006700..0x06006702` (see below); gate excludes exactly these | 6 seeds ARM, 6 data ranges |
+| 2 | IWRAM `0x03000000..0x03005A4C` | `0x5A4C` | `15df40ee533211143aae8cd3deb6062f9d0364135479b0c361e9a24ca6ff0fb2` | yes | MUTABLE DATA ONLY (29 bytes: `0x030029AC..0x030029D0`, `0x03005809`, `0x0300580B`); identified by code runs only | **none (blocked, below)** |
+| 3 | VRAM `0x0600B000..0x0600B150` | `0x150` | `c9978bfe63c71e714f5b95c1324abcbddfd1a613a74a44c84f158438f421c3d9` | yes | IMMUTABLE AFTER LOAD (observed; never dispatched before the frontier) | 5 seeds ARM |
+| 4 | VRAM `0x0600C000..0x0600C060` | `0x60` | `201cd71270e85933f208ae434bb0a446d3e5b75471da7a120dcf349ef2779f31` | yes | **EXECUTABLE OVERLAY**: 90 bytes (77 in code) overwritten by font-setup tiles after boot staging; whole-image gate fails closed afterwards | 4 seeds ARM |
+| 5 | VRAM `0x0600E000..0x0600ED88` | `0xD88` | `027930d0edc399cc93acce1a21e15be36e34a69b51ceb803686d2ad6c580fee0` | yes | IMMUTABLE AFTER LOAD (observed) | 32 seeds (31 ARM, 1 Thumb), 22 data ranges; `0x0600E474` **unseeded** |
+| 6 | EWRAM `0x0203E000..0x0203E8E0` | `0x8E0` | `d3c8c872d123dea0cc39c304a959547257351eb2687d9c1c9b85d5d422938514` | yes | IMMUTABLE AFTER LOAD (observed) | 38 Thumb seeds (23 functions + 15 `bx rN` thunks at `0x0203E8A4`), 23 data ranges |
+
+Images come only from the ROM via `scripts/extract-nes-emulator.py`. Function seeds and code/data runs come from `scripts/derive-nes-emulator-map.py`, which reads a **locally built** nested decomp ELF used purely as an address/mode oracle (built out of tree in scratch; agbcc + `arm-none-eabi-ld`). That ELF's sections equal the ROM-derived Parts byte for byte, except 46 bytes at/after `0x0203E772` in Part 6 (different libgcc thunk placement; the ROM layout is encoded explicitly in the script and checked against the extracted image). Nothing ROM-derived is committed: `configs/mzm-us-nes-emulator.toml` and `src/mzm_nes_emulator_map.h` hold addresses, modes and digests only.
+
+### Part 1 self-modification (why the gate excludes two bytes)
+
+`sub_06006000` (font setup, Part 1 asm) executes `strh r6,[0x06006700]` = `0x0182`: a BG screenblock-12 tilemap entry that lands on Part 1's own instruction `sub r5,r5,#32` (`0x06006700`). The straight-line init in `sub_06006558` runs that instruction *before* it calls font setup (the Part 1 re-entries at `0x06006890`/`0x060068D4`, transitions #4 and #7, are past `0x06006700` in that straight-line code and precede the write; this ordering is inferred from the transition log, not from an instruction trace), so the pristine AOT body is correct for its execution. The overwrite matters to the gate because a VBlank yield inside font setup re-enters at `0x06006098` and must still verify. The exclusion is exactly `[0x06006700,0x06006702)`; the neighbouring byte is gated (unit-tested). Residual risk: any later re-execution of `0x06006700` after the overwrite would run the pristine instruction; the emulator's main loop does not return to `sub_06006558`, and the audit pins that no other Part 1 byte changes.
+
+### Resolver (`src/mzm_nes_emulator_resolver.h`, `src/mzm_ram_dispatch.cpp`)
+
+1. Identify the Part containing `pc` (Part 2 only when a frontier observer is installed: its range aliases MZM's IWRAM code and must not pay a hash per call).
+2. Verify identity: SHA-256 over the Part's gate runs (whole image minus proven mutable data; Part 2: code runs). Literal pools are gated because generated code bakes them in.
+3. Invoke the exact private entry with `runtime_invoke_private_entry(pc, thumb)`; fail closed (no entry, no bytes match) by falling through to the remaining resolvers (Haze/Chozodia/payload keep their own gates) and, finally, a normal dispatch miss.
+4. Counters are per Part and separate from the NES payload counters: attempts / verified / matches / verify_failures / invoke_failures / no_corpus, plus the first 64 cross-image transitions. `matches` is counted at entry (a native body may unwind through the observer with the dispatch in flight).
+
+Lifecycle: **no permanent verified latch.** The bus has no write notification, so every entry re-hashes; a cached verdict could go stale. Cost is bounded by the small gated size (0.4 s total for the 12-frame NES-2 run); an upstream write epoch would allow caching. The pre-existing NES *payload* gate still latches after the entry check (NES-1b baseline, unchanged).
+
+NES-1b isolation: `mzm_set_nes_payload_frontier_stop(true)` (used only by `mzm-nes-payload-frontier`) restores the old behaviour of stopping at exactly `0x06006558`; NES-2 leaves it off.
+
+### Root cause of the handed-over "0x0600E1A0" blocker
+
+The state left by the previous agent was three fixture problems stacked in front of the real frontier, none in the runtime:
+
+1. **Unmapped SRAM (category C, fixture).** The test attached no save backing, so the emulator's SRAM probe at `0x0E007FB0..` read unmapped bytes. Fix: `bus.save().configure_sram(32 KiB)` (fresh cartridge, erased `0xFF`), as the production runner does.
+2. **Wrong stall criterion (category A, scheduling boundary).** `0x0600E19E` is `swi #0x11` (LZ77UnCompWram) and the generator emits `runtime_swi(0x11); return;`, so each SWI returns to the *outer loop* with `PC=0x0600E1A0`. Part 5 loops over many SWIs, so "PC did not advance" was a false frontier. `runtime_should_yield()` was `false` there (verified in gdb), and `vblank_starts` and `halted()` were unchanged. Fix: stall means a bit-identical CPU state after a dispatch or a self-heal miss; halted guests are pumped exactly as `runtime.cpp step_once` does.
+3. **Missing DMA wiring (fixture).** `bus.io().set_bus(&bus)` (done by `runtime.cpp:1935`) was absent from the NES-1b fixture, so its DMA transfers were inert and the images were never populated. NES-1b's PC/WAITCNT assertions still passed, but its images were empty; the agent's `set_bus` change was correct and is now in both fixtures.
+
+Once those were fixed the real frontier appeared: `0x03000488` in Part 2. (A miss observed at `0x03001992` with the previous agent's partial corpus was a Part 2 address reached after an interpreter-bridged miss; not investigated further, Part 2 has no corpus.)
+
+### Frontier (pinned by the test)
+
+`target PC=0x03000488 Thumb part=part2 reason=part_has_no_corpus`, caller `sub_0600E1C4` (Part 5) via `bx r4`, `R4=0x03000489`, `LR=0x0600E224`, `CPSR=0x4000003F`, `SP=0x03007200`, `R7=0x06006700`, `R11=0x030029AC`; host return depth 0, IRQ depth 0; PPU frame 12 (`vblank_starts=12`), 28 top-level dispatches, 0 halt pumps. IRQ: handler `0x030057A8` is installed at `0x03007FFC`, `IE=0x2031`, `IME=1`, but no IRQ vector entry was observed before the frontier (no delivery yet). No visual or audio evidence exists.
+
+Strict counters at the frontier: `dispatch_misses=0 interpreted_insns=0 unmapped=0 io_unhandled=0 self_heal=disabled`.
+
+### Why Part 2 cannot be generated yet (GBARecomp gaps, not implemented)
+
+Both are generic generator limitations in the pinned revision `e0c7cb2`; no GBARecomp file was changed.
+
+**Gap B — private CFG aliasing public IWRAM entries (blocks Part 2 / NES-3).** Declaring Part 2 (`[[executable_image]]` at `0x03000000`) makes the finder abort: `[finder] private CFG conflicts with public entry at 0x030041EC` then `terminate ... std::runtime_error: ambiguous private CFG entry`. `0x030041EC` is MZM's own `gSoundCodeB` `[[code_copy]]` entry; Part 2 also aliases `gInterruptCode` `0x03000C7C`, sound code `0x03003B90/0x03004294`, clipdata `0x030016C4` and Chozodia `0x03001730`. With Part 2's data ranges declared, 68 further "control-flow entries into `[[data_range]]`" appear because `data_range` and `visited_` are keyed by address, not image. Expected: a private CFG rooted in one image resolves its internal PCs to that image and coexists with public entries at the same runtime address (the runtime already disambiguates with byte gates and separate private/public tables). Current: the aliasing is rejected. Smallest generic fix: key private CFG nodes and `data_range`/`extra_func` applicability by `(image id, pc, mode)` and drop the private-vs-public conflict check when the images differ. Synthetic test plan: two images at the same IWRAM address with different bodies (one public `code_copy`, one private image) plus distinct data ranges; assert distinct generated bodies, no cross-image direct call, both dispatch correctly by byte gate.
+
+**Gap A — ARM `ldrne pc,[pc,Rn,lsl #2]` jump-table idiom (Part 5 `0x0600E474`).** `tst r0,#9; ldrb r1,[sp,#..]; ldrne pc,[pc,r1,lsl #2]; beq 0x0600EA58; .word 0x0600E49C,0x0600EC90,0x0600E670,0x0600E93C`. The finder starts an automatic function at the `beq` (`0x0600E4BC`) whose not-taken edge falls into the table bytes `0x0600E4C0..0x0600E4D0`: a hard `data_range` collision. Neither `exclude_func` nor a `[[jump_table]]` declaration suppresses it. The edge is unreachable (`ldrne` takes NE, `beq` takes EQ). Smallest fix: treat a conditional `ldr pc,[pc,...]`/`beq` pair as covering both edges, or accept an unreachable fall-through into a declared `jump_table`. Synthetic test: that exact instruction pair followed by a 4-entry table. Workaround kept: `0x0600E474` is not seeded (documented in the config), so the block is a visible strict miss rather than code generated over data.
+
+### Validation
+
+- CTest **57/57** (56 baseline + `mzm-nes-emulator-frontier`), including NES-1a, NES-1b, Haze/Chozodia resolvers and SRAM helpers; GBARecomp `e0c7cb2` **51/51**, clean; Python **9/9**; `git diff --check` clean.
+- M4 harness: 01 PASS, 02 PASS, 03 PASS (317 frames, `final_pc=0x000001b4`, `FULLY_STATIC`, all counters 0).
+- Regeneration is deterministic through `scripts/generate-m1.sh`, which now extracts the emulator images and passes `configs/mzm-us-nes-emulator.toml`.
