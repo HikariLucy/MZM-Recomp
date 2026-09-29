@@ -1,6 +1,6 @@
 # M4 compatibility matrix (USA rev 0)
 
-Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used by `scripts/generate-m1.sh` and `scripts/build-m1.sh`: `e7728148c6829ba526f682876430a0c9022dc6c0` (clean at audit). `PASS` means only the stated route passed. Framework capability alone is not an MZM pass. `PARTIAL` means some evidence exists but scope or fidelity remains open. `BLOCKED` identifies a demonstrated engine gap. Historical evidence is labeled separately from the new automated run.
+Audit date: 2026-09-29. Main base: `c70b039`. GBARecomp checkout actually used by `scripts/generate-m1.sh` and `scripts/build-m1.sh`: `e7728148c6829ba526f682876430a0c9022dc6c0` (clean at audit). `PASS` means only the stated route passed. Framework capability alone is not an MZM pass. `PARTIAL` means some evidence exists but scope or fidelity remains open. `BLOCKED` identifies a demonstrated engine gap. Historical evidence is labeled separately from the new automated run.
 
 | Area | Feature / Route | Status | Evidence | Automation | Remaining Risk |
 |---|---|---|---|---|---|
@@ -31,7 +31,12 @@ Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used b
 | WAITCNT | Dynamic Game Pak/SRAM waitstates in isolated upstream branch | PASS | [M4 WAITCNT](M4-WAITCNT.md): corrected RED 135 failures → 35/35 upstream GREEN; pin unchanged | Synthetic `waitcnt_tests` | Full hardware timing still unqualified |
 | WAITCNT | MZM programmed-value timing route | PARTIAL | `0x45B4` write and live WS0 5/3→4/2 observed in 1400-step probe; passive cases unchanged | Local MMIO dump and temporary bus probe | Full SRAM route and NBA cycle oracle not run |
 | Game Pak prefetch | Buffer/pipeline timing | BLOCKED | [Prefetch audit](M4-GAMEPAK-PREFETCH.md): fixed generated/interpreter fetch costs lack a shared dynamic seam; MZM sets bit 14 but timing is absent | No prefetch oracle | Opcode queue, fill/flush/contended-bus model and parity/snapshot work needed |
-| Chozodia | Escape HBlank RAM callback | UNVERIFIED | [M0.6](M0.6-HARDWARE-MATRIX.md) identifies 0x40-byte copy; absent from five configured mappings | No | Late route and mapping qualification |
+| Chozodia | HBlank RAM image identification | PASS | [Chozodia audit](M4-CHOZODIA-RAM-CODE.md): linked address and full 0x40-byte synthetic/local-ROM match | Resolver CTest and local ROM test | Identification does not execute the callback |
+| Chozodia | Native RAM callback dispatch | BLOCKED | Generated target exists, but ROM translation exposes ROM PC and ROM-relative timing during IRQ | No execution test | Generic logical RAM-PC/timing seam required |
+| Chozodia | HBlank IRQ delivery | PARTIAL | PPU event, IF request, IE/IME/CPSR gate and IRQ driver implemented; no isolated full-path upstream test | No | End-to-end MZM route unproven |
+| Chozodia | Repeated HBlank callback execution | UNVERIFIED | No late-game checkpoint | No | Need multiple hits across enabled scanlines |
+| Chozodia | IRQ/resume correctness | BLOCKED | `runtime_tick` can preempt native code whose `g_cpu.R[15]` is ROM; interior resume unqualified | No | Repeated RAM entry→return→IRQ exit→re-entry required |
+| Chozodia | Real Escape scene | UNVERIFIED | No Chozodia scene/checkpoint | No | Visual and strict-static route untested |
 | Bosses | All main-game fights | UNVERIFIED | No recorded boss route | No | Progression/visual/audio correctness |
 | Endings | Final sequence and ending | UNVERIFIED | No recorded completion | No | Full-game claim unavailable |
 | Zero Suit | Late Zero Suit section | UNVERIFIED | No recorded route | No | Mechanics, transitions, copied code |
@@ -41,12 +46,12 @@ Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used b
 
 ## Inventory by evidence level
 
-Current row counts: **34 total — 12 PASS, 12 PARTIAL, 1 BLOCKED, 9 UNVERIFIED**.
+Current row counts: **39 total — 13 PASS, 13 PARTIAL, 3 BLOCKED, 10 UNVERIFIED**.
 
-- **VERIFIED:** the two passive headless gates and the 1400-step `InitializeGame` execution/write gate; historical strict-static intro/title, New Game, early rooms, Save Room write, SRAM reload, the two SRAM stack helper bodies, and identification of seven haze RAM images.
+- **VERIFIED:** the two passive headless gates and the 1400-step `InitializeGame` execution/write gate; historical strict-static intro/title, New Game, early rooms, Save Room write, SRAM reload, the two SRAM stack helper bodies, identification of seven haze RAM images, and the Chozodia 0x40-byte RAM image.
 - **PARTIALLY VERIFIED:** host save-state/rewind mechanisms, audio, PPU excluding mosaic, IRQ, DMA, timers, fixed executable copies, indirect calls, and the MZM WAITCNT route beyond observed writes/accesses. These have fidelity or late-route gaps.
-- **UNVERIFIED:** real haze strict-static execution, Power Bomb swap, Chozodia, bosses, endings, Zero Suit, NES Metroid, Fusion Link, and Europe execution.
-- **KNOWN GAP:** the official GBARecomp pin still lacks BG/OBJ mosaic and dynamic WAITCNT waitstates (both corrected only in separate local branches); Game Pak prefetch timing remains unmodeled. Haze now has MZM-specific byte-verified dispatch but no real-scene or IRQ/resume qualification.
+- **UNVERIFIED:** real haze strict-static execution, Power Bomb swap, repeated Chozodia callbacks, the real Chozodia scene, bosses, endings, Zero Suit, NES Metroid, Fusion Link, and Europe execution.
+- **KNOWN GAP:** the official GBARecomp pin still lacks BG/OBJ mosaic and dynamic WAITCNT waitstates (both corrected only in separate local branches); Game Pak prefetch timing remains unmodeled. Haze has byte-verified dispatch but no real-scene or IRQ/resume qualification. Chozodia's image is identified, while ROM-PC exposure and ROM-relative timing block safe native IRQ dispatch.
 
 ## Pin audit details
 
@@ -54,7 +59,7 @@ Current row counts: **34 total — 12 PASS, 12 PARTIAL, 1 BLOCKED, 9 UNVERIFIED*
 
 **WAITCNT/prefetch:** The pin's `access_cycles` is still static. The independent `mzm/waitcnt-timing` branch reads live WAITCNT from IO and handles SRAM/WS0/WS1/WS2, including ROM 32-bit splits and DMA cost. Generic tests and an MZM write/access probe qualify the dynamic part; no NBA cycle oracle qualifies overall timing. The new case 03 makes the `0x45B4` write reproducible with VBlank yielding disabled, but is not a prefetch timing oracle. MZM's value sets hardware bit 14 despite the decomp's `WAIT_GAMEPACK_CGB` name. The BIOS open-bus latch is unrelated to cartridge prefetch. See [M4 WAITCNT](M4-WAITCNT.md) and the [Game Pak prefetch audit](M4-GAMEPAK-PREFETCH.md).
 
-**Executable RAM:** fixed ROM→IWRAM `[[code_copy]]` mappings are supported; MZM's configured five are IRQ, sound A/B/C and clipdata. The RAM dispatch hook byte-verifies two position-independent stack-local SRAM helpers and now identifies seven full 512-byte haze images at the shared RAM address before selecting native code. Six are called from RAM by `HazeProcess`; the seventh copy is called directly from ROM. Synthetic and local-ROM resolver tests pass, while no real haze scene has yet proved full strict-static execution or IRQ/resume behavior. Chozodia's HBlank copy and NES Metroid's multi-region payload remain unqualified. See [M4 HAZE RAM CODE](M4-HAZE-RAM-CODE.md).
+**Executable RAM:** fixed ROM→IWRAM `[[code_copy]]` mappings are supported; MZM's configured five are IRQ, sound A/B/C and clipdata. The RAM dispatch hook byte-verifies two position-independent stack-local SRAM helpers and now identifies seven full 512-byte haze images at the shared RAM address before selecting native code. Six are called from RAM by `HazeProcess`; the seventh copy is called directly from ROM. Synthetic and local-ROM resolver tests pass, while no real haze scene has yet proved full strict-static execution or IRQ/resume behavior. Chozodia's 0x40-byte HBlank image is identified, but native IRQ dispatch is blocked by ROM-PC exposure; NES Metroid's multi-region payload remains unqualified. See [M4 HAZE RAM CODE](M4-HAZE-RAM-CODE.md) and [M4 CHOZODIA RAM CODE](M4-CHOZODIA-RAM-CODE.md).
 
 **Haze capture gate:** MZM-only opt-in trace counts hook calls, resolver attempts and matches, and records a first native variant hit. A wrapper requests a local save through upstream's existing windowed TCP observer after the generated call stack unwinds. A temporary boot-state save/load validated the capture mechanism, but `.local/m4-checkpoints/haze-bg3.state` does not exist. No case 04 or RED→GREEN scene result is claimed.
 

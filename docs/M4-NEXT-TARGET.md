@@ -1,30 +1,33 @@
-# M4 next target: a real haze strict-static checkpoint
+# M4 next target: generic RAM-PC semantics for Chozodia IRQ code
 
-The MZM-specific haze resolver now distinguishes all seven DMA-copied
-`hazeCode` images by comparing their full 512-byte ROM and RAM windows. Six
-variants are called from RAM, and all generated native targets exist. The
-[haze audit](M4-HAZE-RAM-CODE.md) records the decomp control flow,
-position-independence evidence and local ROM test. The current three M4
-regression cases pass but do not execute haze.
+The haze BG3 capture remains pending a human run. There is no
+`.local/m4-checkpoints/haze-bg3.state`; cases 01/02/03 do not require it.
 
-**Selected next qualification target:** obtain a legal local checkpoint for
-an early BG3 scene, with Brinstar room 12 (`EFFECT_WEAK_ACID`) as the first
-topological candidate, and run it
-with the haze hook in strict-static mode. Record a hook hit plus zero dispatch
-misses, interpreted instructions, unmapped accesses and unhandled IO. Run the
-same checkpoint without haze handling to show the dispatch difference. If
-that succeeds, add `04_haze_ram_dispatch` to the harness with the checkpoint
-kept under ignored `.local/m4-checkpoints/`. A Power Bomb checkpoint should
-follow to test expansion→retraction replacement in the same buffer.
+The [Chozodia HBlank audit](M4-CHOZODIA-RAM-CODE.md) now identifies the
+exact 0x40-byte DMA image at `0x03001730`, and the native ROM translation
+`gf_ChozodiaEscapeHBlank` already exists. The function's instructions are
+position independent after copying. Native dispatch is still blocked:
+generated code publishes ROM PC during every instruction, while an IRQ
+preemption or resume of the RAM callback requires RAM PC. Literal memory
+timing is ROM-relative too. Byte identity alone does not repair either issue.
 
-`scripts/capture-m4-first-haze.py` and `build-m4-haze` are prepared for the
-one manual session. The wrapper waits for a byte-verified native BG3 hit and
-requests the snapshot at a clean runtime boundary. See the exact command and
-limits in [M4 HAZE RAM CODE](M4-HAZE-RAM-CODE.md). Until that checkpoint
-exists, strict-static haze execution, IRQ/resume and Power Bomb remain
-unverified; the matrix counts stay unchanged.
+**Selected next engineering target:** establish a generic runtime seam for
+logical PC and fetch/memory timing of native translations entered from
+byte-verified RAM copies, including synchronous nested IRQs and interior
+resume. Test that seam with an isolated HBlank IRQ path before enabling
+Chozodia native dispatch. This is shared GBARecomp work if an implementation
+is warranted, not an MZM-specific IRQ simulation. The current pinned
+GBARecomp PPU produces HBlank events and requests IF_HBLANK; its IRQ driver
+is implemented, but no upstream end-to-end test proves delivery through a
+guest callback. There is no demonstrated HBlank event-generation gap.
 
-Chozodia executable RAM remains the next distinct RAM-code target after haze
-execution is qualified. Game Pak prefetch remains a separate timing track
-waiting for a shared CPU fetch seam and an independent cycle oracle; the
-official upstream pin is unchanged. No work on the next target begins here.
+The later real-game qualification needs a private state at the start of
+Chozodia Escape after `ChozodiaEscapeSetHBlank` and
+`ChozodiaEscapeSetupHBlankRegisters`, before the explosion animation.
+That state is not created here. It must demonstrate repeated callback entry,
+native return, IRQ exit and re-entry, with strict-static error counters zero.
+Until then the Chozodia scene remains unverified.
+
+NES Metroid executable RAM remains a later audit target. The concrete
+Chozodia PC/resume issue takes precedence. Game Pak prefetch remains a
+separate timing track; the official upstream pin is unchanged.
