@@ -32,6 +32,7 @@ for required in \
     "$BUILD/gba_recompile" \
     "$ROM" \
     "$REPO/configs/mzm-us.toml" \
+    "$REPO/configs/mzm-us-nes-emulator.toml" \
     "$IMPORT/BMXE_symbols.toml" \
     "$IMPORT/imported_symbols.tsv" \
     "$IMPORT/imported_data_symbols.tsv"
@@ -42,6 +43,9 @@ do
     fi
 done
 
+echo "=== M1A EXTRACT NES EMULATOR IMAGES FROM LOCAL ROM ==="
+python3 "$REPO/scripts/extract-nes-emulator.py" "$ROM" --out-dir "$REPO/.local/nes-emulator"
+
 echo "=== M1A PREPARE REVIEWED NES SYMBOLS OVERLAY ==="
 python3 "$REPO/scripts/prepare-nes-overlay.py" "$IMPORT/BMXE_symbols.toml" "$OVERLAY"
 
@@ -50,6 +54,7 @@ echo "=== M1A GENERATE MZM CORPUS ==="
 "$BUILD/gba_recompile" \
     --rom "$ROM" \
     --config "$REPO/configs/mzm-us.toml" \
+    --config "$REPO/configs/mzm-us-nes-emulator.toml" \
     --config "$OVERLAY" \
     --symbols "$IMPORT/imported_symbols.tsv" \
     --data-symbols "$IMPORT/imported_data_symbols.tsv" \
