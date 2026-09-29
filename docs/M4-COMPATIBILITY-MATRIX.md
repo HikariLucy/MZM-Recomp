@@ -24,7 +24,9 @@ Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used b
 | Indirect calls | Early route's callbacks and jump tables | PARTIAL | `undefined=0`, 335 auto jump tables; [M3](evidence/M3-STRICT-GAMEPLAY.md) zero misses | Indirectly in baseline | Later targets unknown |
 | Haze effects | Same-PC `hazeCode` variants | BLOCKED | [M0.6](M0.6-HARDWARE-MATRIX.md): several sources overwrite one RAM PC; fixed mapping only | No | Generic variant-aware dispatch needed; MZM route unqualified |
 | Mosaic | BG/OBJ native rendering in local upstream branch; MZM scene | PARTIAL | Pin lacks it; local `mzm/ppu-mosaic` passes 14 synthetic cases and upstream 48/48; no MZM scene | Synthetic CTest; MZM passive cases `UNCHANGED` | Official pin remains unpatched; real scene and extended-view margin not qualified |
-| WAITCNT / prefetch | Register storage and timing | PARTIAL | Pin: `src/gba/gba_io.h` defines WAITCNT; `gba_bus.cpp::access_cycles` uses default timings | No MZM differential test | Dynamic waitstate and cart prefetch timing absent |
+| WAITCNT | Dynamic Game Pak/SRAM waitstates in isolated upstream branch | PASS | [M4 WAITCNT](M4-WAITCNT.md): corrected RED 135 failures → 35/35 upstream GREEN; pin unchanged | Synthetic `waitcnt_tests` | Full hardware timing still unqualified |
+| WAITCNT | MZM programmed-value timing route | PARTIAL | `0x45B4` write and live WS0 5/3→4/2 observed in 1400-step probe; passive cases unchanged | Local MMIO dump and temporary bus probe | Full SRAM route and NBA cycle oracle not run |
+| Game Pak prefetch | Buffer/pipeline timing | BLOCKED | MZM sets hardware bit 14; register stores it, but buffer timing is absent | No prefetch oracle | Opcode buffer/fill/invalidation model needed |
 | Chozodia | Escape HBlank RAM callback | UNVERIFIED | [M0.6](M0.6-HARDWARE-MATRIX.md) identifies 0x40-byte copy; absent from five configured mappings | No | Late route and mapping qualification |
 | Bosses | All main-game fights | UNVERIFIED | No recorded boss route | No | Progression/visual/audio correctness |
 | Endings | Final sequence and ending | UNVERIFIED | No recorded completion | No | Full-game claim unavailable |
@@ -35,16 +37,18 @@ Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used b
 
 ## Inventory by evidence level
 
+Current row counts: **30 total — 10 PASS, 11 PARTIAL, 2 BLOCKED, 7 UNVERIFIED**.
+
 - **VERIFIED:** the two new passive headless gates; historical strict-static intro/title, New Game, early rooms, Save Room write, SRAM reload, and the two SRAM stack helper bodies.
-- **PARTIALLY VERIFIED:** host save-state/rewind mechanisms, audio, PPU excluding mosaic, IRQ, DMA, timers, fixed executable copies, indirect calls, and WAITCNT register/default-cycle behavior. These are architecture or route evidence with fidelity and late-route gaps.
+- **PARTIALLY VERIFIED:** host save-state/rewind mechanisms, audio, PPU excluding mosaic, IRQ, DMA, timers, fixed executable copies, indirect calls, and the MZM WAITCNT route beyond observed writes/accesses. These have fidelity or late-route gaps.
 - **UNVERIFIED:** Chozodia, bosses, endings, Zero Suit, NES Metroid, Fusion Link, and Europe execution.
-- **KNOWN GAP:** the official GBARecomp pin still lacks BG/OBJ mosaic (corrected only in a local branch); mutable same-PC haze code lacks variant-aware native dispatch; dynamic WAITCNT/prefetch timing remains unmodeled. These do not invalidate the proven early route.
+- **KNOWN GAP:** the official GBARecomp pin still lacks BG/OBJ mosaic and dynamic WAITCNT waitstates (both corrected only in separate local branches); mutable same-PC haze code lacks variant-aware native dispatch; Game Pak prefetch timing remains unmodeled.
 
 ## Pin audit details
 
 **Mosaic:** The official `e7728148` pin reads no MOSAIC register or enable bits for rendering. The isolated local `mzm/ppu-mosaic` branch implements native BG/OBJ/OBJ-window sampling; 14 synthetic cases and 48/48 upstream tests pass. A patched MZM build passes both passive strict-static cases and compares `UNCHANGED` with the pin. The decomp contains register writes but no proven nonzero size plus layer enable; `SPRITE_STATUS_MOSAIC` is an affine matrix selector, not the hardware OAM bit. No MZM scene has been captured. See [M4 PPU MOSAIC](M4-PPU-MOSAIC.md).
 
-**WAITCNT/prefetch:** `src/gba/gba_io.h` defines WAITCNT at `0x204`; IO storage/diagnostics accept writes. `src/gba/gba_bus.cpp::access_cycles` explicitly uses default `WAITCNT=0x0000` for ROM WS0/1/2 and SRAM. The `prefetch_word` and BIOS open-bus latch model BIOS/open-bus data, not cartridge prefetch waitstate timing. MZM writes WAITCNT, but no differential timing test qualifies those writes. This is a dynamic timing gap, not a missing MMIO register.
+**WAITCNT/prefetch:** The pin's `access_cycles` is still static. The independent `mzm/waitcnt-timing` branch reads live WAITCNT from IO and handles SRAM/WS0/WS1/WS2, including ROM 32-bit splits and DMA cost. Generic tests and an MZM write/access probe qualify the dynamic part; no NBA cycle oracle qualifies overall timing. MZM's `0x45B4` sets hardware prefetch bit 14 despite the decomp's `WAIT_GAMEPACK_CGB` name. The BIOS open-bus latch is unrelated to cartridge prefetch. See [M4 WAITCNT](M4-WAITCNT.md).
 
 **Executable RAM:** fixed ROM→IWRAM `[[code_copy]]` mappings are supported; MZM's configured five are IRQ, sound A/B/C and clipdata. The RAM dispatch hook in `src/mzm_ram_dispatch.cpp` byte-verifies two position-independent stack-local SRAM helpers and calls their generated native bodies; early strict-static/save evidence qualifies those helper routes. A fixed runtime-PC→one-source mapping cannot select all `hazeCode` variants. Chozodia's HBlank copy and NES Metroid's multi-region payload are identified but unqualified in MZM. Framework infrastructure is not proof those routes run.
 
