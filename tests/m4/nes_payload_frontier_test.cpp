@@ -52,11 +52,15 @@ int main(int argc, char** argv) {
     gba::GbaPpu ppu;
     bus.set_rom(rom.data(), rom.size());
     bus.set_bios(&bios);
+    // Same wiring as the production run loop (runtime.cpp); without it DMA
+    // transfers are inert and guest RAM images are never populated.
+    bus.io().set_bus(&bus);
     gbarecomp::set_active_bus(&bus);
     gbarecomp::set_active_ppu(&ppu);
     gbarecomp::self_heal_reset();
 
     mzm_install_ram_dispatch_hook();
+    mzm_set_nes_payload_frontier_stop(true);
 
     g_cpu = {};
     g_cpu.cpsr = 0x1Fu;
