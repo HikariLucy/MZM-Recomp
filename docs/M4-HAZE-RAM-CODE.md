@@ -160,5 +160,8 @@ Capture plumbing was smoke-tested separately with a temporary BIOS/boot
 state: observer save succeeded, and headless `--load-state` advanced one
 frame with zero strict-static counters. A 120-frame dummy-window run with
 present-in-place disabled also finished with zero counters. Neither test
-activated haze. The real checkpoint remains absent; case 04, RED/GREEN,
+activated haze. In the observer smoke run, the dummy-window process did not
+exit within the post-save timeout and was terminated; windowed observer
+shutdown therefore remains unqualified even though the saved state loaded.
+The real checkpoint remains absent; case 04, RED/GREEN,
 IRQ/resume and three-run repeatability are **PENDING HUMAN RUN**.
