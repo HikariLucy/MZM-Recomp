@@ -116,6 +116,23 @@ if(BUILD_TESTING)
 
     set(MZM_TEST_ROM "" CACHE FILEPATH "Optional local USA ROM for native RAM tests")
     if(UNIX AND MZM_TEST_ROM)
+        set(MZM_TEST_BIOS "" CACHE FILEPATH "Optional local BIOS for NES loader frontier test")
+        if(MZM_TEST_BIOS)
+            add_executable(mzm_nes_loader_frontier_test
+                tests/m4/nes_loader_frontier_test.cpp
+                $<TARGET_OBJECTS:mzm_generated_objects>)
+            target_include_directories(mzm_nes_loader_frontier_test PRIVATE
+                src generated
+                "${GBARECOMP_ROOT}/src/armv4t"
+                "${GBARECOMP_ROOT}/src/gba"
+                "${GBARECOMP_ROOT}/src/runtime")
+            target_link_libraries(mzm_nes_loader_frontier_test PRIVATE
+                "-Wl,--start-group" gbarecomp_runtime gbarecomp_debug
+                gbarecomp_gba gbarecomp_armv4t "-Wl,--end-group")
+            add_test(NAME mzm-nes-loader-frontier
+                COMMAND mzm_nes_loader_frontier_test "${MZM_TEST_ROM}"
+                    "${MZM_TEST_BIOS}" "${CMAKE_CURRENT_BINARY_DIR}/nes1a")
+        endif()
         add_executable(mzm_chozodia_native_test
             tests/m4/chozodia_native_test.cpp
             src/mzm_ram_dispatch.cpp
