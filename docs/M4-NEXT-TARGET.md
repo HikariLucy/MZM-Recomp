@@ -1,28 +1,28 @@
-# M4 next target: qualify PPU mosaic
+# M4 next target: qualify programmed WAITCNT timing
 
 ## Problem
 
-The pinned GBARecomp scanline renderer does not apply BG or OBJ mosaic even though MZM writes `REG_MOSAIC` and uses mosaic sprite states. This prevents a visual-accuracy claim for affected scenes.
+MZM writes a nondefault `REG_WAITCNT` value during `InitializeGame`, while the pinned GBARecomp bus timing path uses default cartridge/SRAM access cycles. The next bounded task is to establish the expected programmed timing and a generic synthetic differential test before proposing a runtime fix. This does not require a late-game checkpoint.
 
 ## Evidence
 
-Pin `e7728148c6829ba526f682876430a0c9022dc6c0` is clean. Its `GBA_ACCURACY_BURNDOWN.md` lists mosaic as missing. `src/gba/gba_ppu.cpp` has no mosaic register read or BG/OBJ mosaic sampling; diagnostic register output is observational only. MZM relevance is documented in `docs/M0.6-HARDWARE-MATRIX.md`. No MZM scene/pixel reference is yet captured, so the next task is qualification, not a claim of a corrected renderer.
+`mzm_us.elf` disassembly and `src/init_game.c` show the WAITCNT write immediately after interrupt setup. The pin defines/stores the MMIO register, but `src/gba/gba_bus.cpp::access_cycles` currently uses default waitstate costs. The M4 matrix marks timing PARTIAL. The `0x080006CA` strict-static probe was a VBlank-unwind artifact: disabling that yield lets 1000 steps finish with zero counters, so it is not the next static-coverage target. The local MOSAIC branch passes 48/48 synthetic upstream tests, but MZM has no verified active MOSAIC scene; its remaining qualification needs runtime scene evidence.
 
 ## Ownership
 
-Generic rendering belongs in GBARecomp upstream: `src/gba/gba_ppu.cpp`, with deterministic coverage in `tests/ppu_smoke/test_main.cpp`. MZM-Recomp owns a local case/checkpoint and comparison against a trusted GBA reference for an actual affected scene. No MZM-only graphics override is proposed.
+GBARecomp owns generic cartridge/SRAM timing and prefetch behavior in `src/gba/gba_bus.cpp` and related IO state. MZM-Recomp owns recording the concrete WAITCNT value used by the USA build and checking strict-static regressions. No ROM-address or game-specific timing shortcut belongs upstream.
 
 ## Proposed fix
 
-First create a small upstream PPU fixture for BG mosaic and OBJ mosaic, covering horizontal and vertical sizes, enable bits, and boundary behavior. Confirm it fails at the current pin. Capture one MZM scene that writes nonzero MOSAIC and retain its local checkpoint under `.local/m4-checkpoints/`. Then propose an upstream patch that samples the correct mosaic source coordinate before tile/affine/OBJ fetch; keep normal rendering unchanged when mosaic is disabled. Do not implement that upstream patch in this workstream yet.
+First add synthetic bus tests that write distinct WAITCNT SRAM/WS0/WS1/WS2 values and assert sequential/nonsequential access cycles. Record the current RED differences. Audit the prefetch enable bit and bus-sequence state separately before changing timing. After expectations are confirmed against GBATEK/hardware behavior, implement generic register-dependent timing upstream in an isolated branch. This document selects the target; implementation has not started.
 
 ## Validation plan
 
-1. Inspect MZM's `REG_MOSAIC` writes and select a reachable early effect; if none is reachable without long play, qualify the generic fixture first and leave MZM scene UNVERIFIED.
-2. Record a trusted reference frame, MOSAIC register state, and local checkpoint provenance. Store ROM-derived state outside Git.
-3. Run the same checkpoint with the M4 harness under strict-static enforcement, confirm zero counters, and compare relevant pixels/regions with the reference.
-4. Apply any proposed generic fix in a separate upstream workstream, rerun upstream PPU tests and the MZM checkpoint, and review visual differences.
+1. Decode MZM's programmed WAITCNT value from the verified decomp/ROM build.
+2. Compare synthetic cycle counts across default and programmed values, including sequential accesses and SRAM, against a trusted hardware reference.
+3. Run GBARecomp bus/PPU/full tests and the two M4 strict-static cases after any future generic fix.
+4. Keep prefetch separately qualified if its pipeline behavior cannot be shown by access-cycle tests alone.
 
 ## Risk
 
-Scanline-latched register state may not reproduce mid-scanline changes; affine BG and OBJ-window interactions can add edge cases. A passing synthetic PPU test alone would not qualify MZM visuals. The observed raw `--steps 1000` dispatch miss remains separate static-coverage debt.
+Changing timing can alter IRQ/DMA/audio phase even if static dispatch remains zero. The current M4 passive cases are only boot gates, so gameplay timing still needs its own oracle. The official GBARecomp pin remains unchanged until an explicit update workstream.
