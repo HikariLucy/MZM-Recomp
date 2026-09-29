@@ -24,7 +24,7 @@ if(NOT EXISTS "${GBARECOMP_ROOT}/CMakeLists.txt")
 endif()
 
 # The source path is supplied by the builder; the revision is immutable.
-set(MZM_GBARECOMP_PIN "e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21"
+set(MZM_GBARECOMP_PIN "2c40fe8539c566ce2aee7dce8a722917a6cf475c"
     CACHE STRING "Exact GBARecomp revision for this build")
 execute_process(COMMAND git -C "${GBARECOMP_ROOT}" rev-parse HEAD
     OUTPUT_VARIABLE MZM_GBARECOMP_HEAD OUTPUT_STRIP_TRAILING_WHITESPACE

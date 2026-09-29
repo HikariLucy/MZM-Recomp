@@ -54,13 +54,22 @@ e7728148c6829ba526f682876430a0c9022dc6c0
 M4 integration revision used by the current MZM build:
 
 ```text
-e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21
+2c40fe8539c566ce2aee7dce8a722917a6cf475c
 ```
+
+(previous pin: `e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21`)
 
 This local revision combines MOSAIC, WAITCNT, private relocated entry,
 non-returning calls (`returns = false`), terminal SoftReset control-flow,
 multi-image `[[executable_image]]` architecture, secondary image private_entry
 propagation, and VRAM execution support in `g_runtime_ram_dispatch_hook` on the M0 base.
+It adds, on top of `e0c7cb2` (branch `mzm/image-scoped-private-cfg`, four upstream
+changes plus two tests): image-scoped private CFG for `overlay = true` executable
+images (function identity is `(image, addr, mode)`; `runtime_private_image_handle` and
+`runtime_invoke_private_entry_in_image`; the unscoped `runtime_invoke_private_entry`
+only reaches primary-world entries), CFG termination for a conditional indirect
+transfer paired with a complementary branch (`ldrne pc,...` + `beq`), and seeding of
+the LR continuation of `ldr pc,[...]` indirect calls.
 `CMakeLists.txt` and `scripts/generate-m1.sh` check the exact SHA through the supplied
 `GBARECOMP_ROOT`; no branch name or local absolute path is part of the dependency pin.
 
