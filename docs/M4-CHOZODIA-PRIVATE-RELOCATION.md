@@ -1,102 +1,62 @@
-# M4 Chozodia private relocation experiment
+# M4 private relocated native entry
 
-Date: 2026-09-29. MZM remains on the official GBARecomp pin `e7728148`.
-The separate local worktree `GBARecomp-mzm-private-reloc` is based on that pin.
-Its results are experimental; MZM's committed RAM hook still reports `native=0`.
-No Chozodia gameplay checkpoint exists.
+Date: 2026-09-29. MZM uses local GBARecomp integration revision
+`644ec842f8b2106f21fdef6ae05ae997c8e49869`, based on
+`e7728148c6829ba526f682876430a0c9022dc6c0`. It cherry-picks the
+MOSAIC tests/fix, WAITCNT tests/fix, and private relocation commits. The
+private branch ends at `5760837cce012eaa4af5320a9582bd64508cbfda`.
+No remote merge or push was performed.
 
-## Relocation semantics and generated body
+## Generic contract
 
-The pinned `[[extra_func]]` contract already accepts `addr=0x03001730`,
-`source_addr=0x08087938`, `mode="thumb"`. `FunctionFinder::discover_one`
-maps each runtime walk address through the source/runtime bias to read ROM
-opcodes. `emit_function_body_str` applies the same bias to ROM bytes but passes
-the **runtime** PC to `ThumbDecoder::decode` and the code generator. No
-`[[code_copy]]` is needed for this entry; the existing clipdata mapping at
-`0x030016C4..0x03001944` can coexist with the explicit source bias.
+`[[extra_func]]` with `addr`, `source_addr`, `mode`, and `dispatch = false`
+decodes opcodes from the immutable source but emits a native body whose guest
+PC is `addr`. Omission of `dispatch` defaults to `true`. A private root and
+its decoded interior instruction PCs enter `kPrivateDispatchTable`, never
+`kDispatchTable`. `runtime_dispatch()` and `runtime_has_static_entry()` only
+consult the public table. The game-owned RAM hook must verify the current
+complete mutable image before each explicit
+`runtime_invoke_private_entry(pc, thumb)` call. A declined hook follows the
+normal dispatch miss path.
 
-A local overlay with that one `[[extra_func]]` emitted
-`gf_chozodia_hblank_ram` in `recompiled_015.cpp`. Its first instruction sets
-`g_cpu.R[15]=0x03001730`; the function entry hook receives `0x03001730`.
-The load at `0x03001732` uses `(0x03001736 & ~3) + 0x28`, reaching the copied
-literal at `0x0300175C`. Trace events and the WIN0H store use `0x03001752`.
-The body ends after `bx r0` at `0x03001758` and unwinds through
-`runtime_call_should_return`. The decomp symbol's `0x3C` size includes the
-literal pool; only `0x2A` bytes decode as instructions. The exact matcher
-still checks all `0x40` copied bytes, including four bytes past the symbol.
+The finder keeps private status through direct RAM CFG descendants and seed
+deduplication. An indirect call to a public ROM function remains public.
+Contradictory explicit policies at one address/source/mode, or a collision
+between public and private root/resume entries, abort generation. Resume
+aliases derive from successfully decoded instruction PCs. Chozodia's literal
+pool and the extra bytes copied by DMA have no private alias.
 
-## Why config alone is unsafe
+## Chozodia generation and MZM hook
 
-The pinned generator also adds `{0x03001730, Thumb,
-gf_chozodia_hblank_ram}` to `kDispatchTable`. `runtime_dispatch` invokes the
-RAM hook first, but a declined hook falls through to that table. With a wrong
-RAM image, `runtime_dispatch(0x03001731)` would therefore enter the Chozodia
-native body without validating the opcodes. This fails the negative safety
-criterion. `[[exclude_func]]` removes the body as well as the table entry.
-No existing private emission option was found in the pinned config, finder,
-emitter, or dispatch writer.
+MZM declares runtime `0x03001730`, source `0x08087938`, Thumb, and
+`dispatch = false`. The generated `gf_chozodia_hblank_ram` has 21 private
+entries: the root and 20 interior PCs `0x03001732..0x03001758` in steps of
+two. Neither the root nor its aliases is in public `kDispatchTable`.
 
-The isolated GBARecomp branch adds generic `dispatch = false` to
-`[[extra_func]]`: it emits the named function and its direct CFG descendants,
-but omits their roots and interior resume aliases from the ordinary table.
-The synthetic test puts wrong bytes at its RAM address; a byte-checking hook
-declines, and `runtime_dispatch` aborts on a strict-static miss. With exact
-bytes, the same hook invokes the private native symbol. This branch has not
-changed MZM's official pin or generated corpus.
+The hook admits only Thumb PCs in `[0x03001730,0x0300176C)`, compares the
+entire 64-byte image `[0x03001730,0x03001770)` with ROM on **every** entry
+and resume, then asks the private table for that exact PC. The table rejects
+non-instruction PCs such as `0x0300175A`. The function range, decoded code
+range, and DMA copy range have distinct purposes.
 
-## Clipdata overlap
+The local-ROM MZM native CTest enters through ordinary `runtime_dispatch` and
+the production hook. Wrong RAM bytes at either root or `0x03001752` produce a
+strict-static miss, while correct bytes enter the private body. The interior
+resume writes WIN0H with captured guest PC `0x03001752` and returns with a
+balanced host call stack. A separate resolver test puts the actual clipdata
+ROM bytes into the overlapping union window and confirms rejection. Haze's
+seven-image resolver is unchanged and its test still passes.
 
-The current MZM dispatch table has clipdata entries at `0x030016C4`,
-`0x030017C0`, `0x030017C8`, `0x030017EA`, and `0x030017F8`. It has no entry
-at `0x03001730`. The generated clipdata root branches to `0x030017C0`;
-searching its generated CFG found no call, branch, label, or resume alias at
-`0x03001730`. `static_resume_all` is disabled in MZM. This rules out a known
-static clipdata dispatch/resume collision at that PC. It does not prove that
-every future clipdata runtime path is impossible; the byte gate is required
-because the union is mutable.
+The upstream synthetic fixture uses the same generated private API for a
+root, nested IRQ, RAM return PC, SPSR restoration, debug yield, interior
+resume, and balanced return. The private branch passes 35/35 applicable
+tests; the combined integration branch passes 50/50. MZM's three local tests
+and harness cases 01/02/03 pass; case 03 remains at 317 frames with four
+strict-static error counters zero.
 
-## Execution probes
+## Remaining qualification
 
-A fully synthetic upstream fixture places Thumb source bytes at
-`0x08000100` and copies them to `0x03001000`. It contains two PC-relative
-literal loads, an internal branch to `0x0300100C`, a WIN0H store, and a
-`pop {pc}` return. The private root and CFG child are absent from
-`runtime_has_static_entry`. The generated private body is invoked through a
-byte-checking RAM hook; MMIO capture records WIN0H `0x34` at `0x0300100C`.
-The source translation records `0x0800010C`. R0–R14, CPSR, stack memory and
-WIN0H value agree. The local timing model measured 19 cycles for RAM and 33
-for ROM, reflecting data literal access costs; it does not model accurate
-IWRAM-versus-ROM **instruction fetch** or full Game Pak prefetch behavior.
-
-In the same fixture, an outer IRQ switches to System mode and runs the
-private callback. A pending IRQ is delivered by `runtime_tick` during the
-callback. The nested IRQ records return PC `0x03001002` and System/Thumb
-SPSR `0x3F`. Both IRQ levels complete, CPSR returns to `0x3F`, and the
-call-return stack reaches zero. A pending VBlank yield does not unwind the
-callback while `g_irq_nest_depth` is nonzero. A separate debug-breakpoint
-yield at `0x03001004` resumes through a private interior alias and the
-byte-checking hook; its final state and 19-cycle count match uninterrupted
-execution.
-
-A local-only test compiled the actual Chozodia ROM and relocated native
-functions, copied the verified `0x40`-byte local ROM window to `0x03001730`,
-and initialized one haze halfword to `0x1234`. MMIO capture recorded the
-WIN0H write at `0x0808795A` for the ROM translation and at `0x03001752`
-for the relocated translation. R0–R14, CPSR, stack memory and WIN0H value
-matched. The current timing model measured 81 ROM versus 53 RAM cycles.
-The same local fixture enters the relocated body through a 64-byte-checking
-RAM hook. After changing one byte at `0x03001730`, its
-`runtime_dispatch(0x03001731)` test declines the hook and aborts on a
-strict-static miss at `0x03001730`, without entering the native body.
-The fixture and all ROM-derived generated files stayed under `/tmp`; no
-Nintendo bytes were committed.
-
-## Integration gate
-
-MZM remains `native=0`: the official pin ignores the experimental
-`dispatch = false` key, so adding the overlay to the normal config would
-reintroduce the unsafe global entry. Integration requires a reviewed
-GBARecomp revision with private emission and an explicit generation/build
-gate, followed by a MZM hook that verifies all 64 bytes at both the initial
-entry and any private interior resume PC. There is still no real Chozodia
-HBlank callback, repeated execution, or scene qualification.
+There is no `.local/m4-checkpoints/chozodia-hblank.state`. Real HBlank
+callback delivery, repeated callbacks, and the actual Escape scene remain
+**UNVERIFIED**. The native route is synthetically qualified for a future
+strict-static scene test; no gameplay result is inferred from this fixture.

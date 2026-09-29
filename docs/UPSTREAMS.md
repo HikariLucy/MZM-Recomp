@@ -51,6 +51,17 @@ Pinned M0 baseline:
 e7728148c6829ba526f682876430a0c9022dc6c0
 ```
 
+M4 integration revision used by the current MZM build:
+
+```text
+644ec842f8b2106f21fdef6ae05ae997c8e49869
+```
+
+This local revision combines MOSAIC, WAITCNT and private relocated entry
+commits on the M0 base. `CMakeLists.txt` and `scripts/generate-m1.sh` check
+the exact SHA through the supplied `GBARECOMP_ROOT`; no branch name or local
+absolute path is part of the dependency pin.
+
 License at the audited revision: **PolyForm Noncommercial License 1.0.0**.
 
 Contribution policy:

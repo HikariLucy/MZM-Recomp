@@ -1,9 +1,8 @@
 # M4 Chozodia Escape HBlank RAM code audit (BMXE rev 0)
 
-> This documents the committed `e7728148` pin and MZM's `native=0` resolver.
-> A later [private relocation experiment](M4-CHOZODIA-PRIVATE-RELOCATION.md)
-> proves RAM-PC native execution in an isolated GBARecomp worktree. MZM's
-> official pin and real-scene status have not changed.
+> MZM now pins GBARecomp integration revision `644ec842f8b2106f21fdef6ae05ae997c8e49869`.
+> Private native dispatch is synthetically qualified. No real Escape scene or
+> HBlank callback has been observed.
 
 ## Layout and copied image
 
@@ -69,40 +68,30 @@ instruction bytes address the copied literal words at the corresponding RAM
 offsets. The 0x40-byte copy includes all four words. At the ARM instruction
 level this image is position independent for the intended data accesses.
 
-**Native canonicalization currently needs RAM-PC semantics.** The generated
-`gf_ChozodiaEscapeHBlank` exists (`generated/recompiled.h`, source
-`0x08087938`; no seed or generated edit is required), but it writes ROM
-addresses to `g_cpu.R[15]` at every instruction and calculates its literal
-reads from ROM addresses. Byte identity makes the literal *values* equal,
-and its guest LR/stack operations and Thumb `bx` return can still find the
-callback's return address. It does not make the PC or fetch/timing behavior
-equal. `runtime_tick` can synchronously enter another IRQ using
-`g_cpu.R[15]` as its return address. During this native body, that address
-would be ROM, where the guest's interrupted callback PC is RAM. An unwind
-inside the IRQ also re-dispatches `g_cpu.R[15]`; the ROM function has only a
-static entry at `0x08087938`, not interior resume entries. `runtime_should_yield`
-blocks ordinary VBlank yield while `g_irq_nest_depth > 0`, but other unwind
-conditions exist. CPSR Thumb mode and guest LR are not themselves rewritten
-by the image resolver; the PC mismatch remains. ROM-relative memory-cycle
-costs for literal loads also differ from RAM. A byte matcher alone cannot
-qualify IRQ nesting, exception return, precise HBlank timing, or resume.
+The integrated generator emits `gf_chozodia_hblank_ram` with RAM guest PCs
+and ROM-backed opcodes. Its root and 20 decoded interior PCs are private;
+`runtime_has_static_entry` is false for them. The MZM hook compares all 0x40
+bytes on every root or interior resume, then calls the generated private
+target for that exact PC. A wrong image returns unhandled and strict-static
+dispatch misses. The full copy includes literal data, but no alias is emitted
+for it. The ordinary ROM translation remains public for ROM calls; it is not
+used to execute the copied callback.
 
-The resolver currently **identifies** the full 0x40-byte image and records
-one `MZM_TRACE_RAM_DISPATCH=1` match with `kind=chozodia_hblank`, real
-`runtime_pc`, `source_pc=0x08087938`, and `native=0`; its summary aggregates
-attempts and matches. It returns unhandled to strict-static dispatch. This
-is intentional until the generic runtime preserves the logical RAM PC and
-timing through native execution. It never prints per-scanline match spam.
+The native test captures the WIN0H write with guest PC `0x03001752` and
+returns with balanced call stack. The upstream synthetic nested IRQ fixture
+records RAM return PC, SPSR and private resume through the same generated
+API. These tests establish infrastructure; they do not establish actual
+HBlank callback delivery or exact hardware timing in the Escape scene.
 
 ## Qualification matrix
 
 | Layer | Current evidence | Status |
 |---|---|---|
 | RAM image identification | Full 0x40-byte synthetic and local USA ROM tests, including negatives | PASS |
-| Native dispatch | Generated target exists; ROM-PC exposure at each instruction | BLOCKED |
+| Private native dispatch | MZM hook and generated private body execute only after complete image match | PASS, SYNTHETIC |
 | HBlank IRQ delivery | PPU event, IF request, IE/IME/CPSR gate and IRQ driver audited; no full-path test | PARTIAL |
 | Repeated callback execution | No late-game checkpoint | UNVERIFIED |
-| IRQ/resume correctness | RAM entry→return→IRQ exit→next HBlank has no real run; ROM-PC issue | BLOCKED |
+| IRQ/resume correctness | Upstream nested IRQ and MZM interior WIN0H resume pass; real callback chain awaits checkpoint | PASS, SYNTHETIC |
 | Real scene qualification | No Chozodia Escape state | UNVERIFIED |
 
 The future private checkpoint is
@@ -116,15 +105,14 @@ and zero `dispatch_misses`, `interpreted_insns`, `unmapped`, and
 
 ## Local verification
 
-`mzm_chozodia_resolver_test` synthesizes the copy and rejects wrong PC,
-ARM mode, a changed byte, a function-length-only copy, and unrelated union
-contents. `--rom /path/to/local-USA.gba` reads the 0x40-byte source window
-directly from a local 8 MiB cartridge image, copies it into synthetic RAM,
-and tests identification only. No game bytes are stored in Git.
+`mzm_chozodia_resolver_test` checks root and interior image matches, ARM mode,
+changed bytes, a function-length-only copy, and unrelated union contents.
+Its local-ROM mode also places actual clipdata bytes in the overlapping
+window and confirms rejection. `mzm_chozodia_native_test` links the real
+generated MZM corpus and production hook; local-ROM execution checks wrong
+root/interior strict misses, correct private entry/interior execution and
+WIN0H PC identity. No game bytes are stored in Git.
 
-The existing case 03 expectation (317 PPU frames) matches the M4 build
-linked to the local WAITCNT worktree. A separate rebuild against the
-unmodified `e772814` upstream pin reproducibly reports 314 frames and
-67,641,054 cycles at the same 1,400-step limit, with the expected PC and
-all four strict-static counters zero. Cases 01/02 pass there. This is a
-timing-baseline difference, not evidence that the Chozodia image path ran.
+The integrated build passes harness 01/02/03. Case 03 retains 317 PPU frames,
+`0x45B4` WAITCNT write, `final_pc=0x000001B4`, and four zero strict-static
+counters. This boot probe does not visit Chozodia.

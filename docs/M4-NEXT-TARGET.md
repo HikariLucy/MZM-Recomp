@@ -1,33 +1,18 @@
-# M4 next target: generic RAM-PC semantics for Chozodia IRQ code
+# M4 next target
 
-The haze BG3 capture remains pending a human run. There is no
-`.local/m4-checkpoints/haze-bg3.state`; cases 01/02/03 do not require it.
+The integrated GBARecomp revision `644ec842f8b2106f21fdef6ae05ae997c8e49869`
+provides private relocated native entry and MOSAIC/WAITCNT fixes. MZM's
+Chozodia hook is byte gated and synthetically qualified, including interior
+resume and WIN0H PC identity. Harness cases 01/02/03 pass, with case 03 at
+317 frames.
 
-The [Chozodia HBlank audit](M4-CHOZODIA-RAM-CODE.md) now identifies the
-exact 0x40-byte DMA image at `0x03001730`, and the native ROM translation
-`gf_ChozodiaEscapeHBlank` already exists. The function's instructions are
-position independent after copying. Native dispatch is still blocked:
-generated code publishes ROM PC during every instruction, while an IRQ
-preemption or resume of the RAM callback requires RAM PC. Literal memory
-timing is ROM-relative too. Byte identity alone does not repair either issue.
+There is no Chozodia HBlank checkpoint. Real callback delivery, repeated
+callbacks, and the Escape scene remain **UNVERIFIED**. Further Chozodia
+qualification should wait for a genuine state captured after
+`ChozodiaEscapeSetHBlank` and `ChozodiaEscapeSetupHBlankRegisters`.
 
-**Selected next engineering target:** establish a generic runtime seam for
-logical PC and fetch/memory timing of native translations entered from
-byte-verified RAM copies, including synchronous nested IRQs and interior
-resume. Test that seam with an isolated HBlank IRQ path before enabling
-Chozodia native dispatch. This is shared GBARecomp work if an implementation
-is warranted, not an MZM-specific IRQ simulation. The current pinned
-GBARecomp PPU produces HBlank events and requests IF_HBLANK; its IRQ driver
-is implemented, but no upstream end-to-end test proves delivery through a
-guest callback. There is no demonstrated HBlank event-generation gap.
+The haze BG3 checkpoint is also pending a manual run. Keep its seven-image
+resolver as-is. Game Pak prefetch has no implementation in this integration.
 
-The later real-game qualification needs a private state at the start of
-Chozodia Escape after `ChozodiaEscapeSetHBlank` and
-`ChozodiaEscapeSetupHBlankRegisters`, before the explosion animation.
-That state is not created here. It must demonstrate repeated callback entry,
-native return, IRQ exit and re-entry, with strict-static error counters zero.
-Until then the Chozodia scene remains unverified.
-
-NES Metroid executable RAM remains a later audit target. The concrete
-Chozodia PC/resume issue takes precedence. Game Pak prefetch remains a
-separate timing track; the official upstream pin is unchanged.
+**Next proposed audit:** NES Metroid's executable-RAM subsystem. Audit its
+payload regions and dispatch requirements before implementing anything.
