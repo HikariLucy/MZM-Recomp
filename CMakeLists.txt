@@ -85,6 +85,12 @@ if(BUILD_TESTING AND EXISTS "${RECOMP_UI_ROOT}/src/common/sha1.c")
     add_test(NAME mzm-launcher-state COMMAND mzm_launcher_state_test)
 endif()
 
+if(BUILD_TESTING)
+    add_executable(mzm_haze_resolver_test tests/m4/haze_resolver_test.cpp)
+    target_include_directories(mzm_haze_resolver_test PRIVATE src)
+    add_test(NAME mzm-haze-resolver COMMAND mzm_haze_resolver_test)
+endif()
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Optional recomp-ui pre-boot launcher.
