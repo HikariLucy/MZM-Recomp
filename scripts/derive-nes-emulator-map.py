@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Derives the per-Part code/data map of the NES emulator from a LOCALLY built
-nested decomp ELF (nes_metroid/emulator, built out-of-tree; see
-docs/M4-NES-METROID.md). Only addresses, modes and sizes are emitted -- no
-ROM-derived bytes. The ELF is used purely as a symbol oracle: every Part's
-bytes are separately reconstructed from the legal ROM by
-extract-nes-emulator.py and checked against the guest.
+MAINTAINER VERIFICATION TOOL -- not part of the normal build.
 
-Output (stdout): TOML fragment with one [[data_range]] per data run and one
-[[extra_func]] per function symbol inside a code run, plus a C++ table of the
-code runs used by the runtime byte gate.
+The build consumes the versioned canonical map configs/nes-emulator-map-us.toml
+(see scripts/generate-nes-emulator-config.py). This tool re-derives the same
+structural metadata from a LOCALLY built nested decomp ELF (nes_metroid/emulator,
+built out-of-tree; see docs/M4-NES-METROID.md) and checks it against the
+canonical map. The ELF is a structure/symbol oracle, not an authority: the ROM
+remains the authority for every executed byte, and each Part's bytes are
+reconstructed from the legal ROM by extract-nes-emulator.py and hash-checked.
+Only addresses, modes and sizes are read/emitted -- no ROM-derived bytes.
 
-Usage: derive-nes-emulator-map.py path/to/mzm_us.elf [--format toml|cpp]
+Usage:
+  derive-nes-emulator-map.py --elf nested.elf --compare configs/nes-emulator-map-us.toml
+  derive-nes-emulator-map.py --elf nested.elf --emit-candidate .local/nes-map-candidate.toml
+
+The canonical map is never overwritten unless --emit-candidate is pointed at
+it explicitly. Mutable ranges are runtime evidence (not ELF-derived), so they
+are emitted from the table below but ignored by --compare.
 """
 import argparse
 import hashlib
@@ -77,7 +83,11 @@ MUTABLE_OBSERVED = {
 for _name, _runs in MUTABLE_OBSERVED.items():
     MUTABLE_DATA.setdefault(_name, []).extend(_runs)
 
-GATE_CODE_ONLY = set()
+MUTABLE_NOTES = {
+    ("part1", 0x06006700): "font setup strh overwrites a code halfword (BG screenblock 12 entry)",
+    ("part2", 0x03002330): "writable .data of part2.o and part2_handwritten.o (linker map)",
+    ("part2", 0x03005808): "sUnk_03005808 emulator state pointer, observed dirty at runtime",
+}
 
 
 def readelf_symbols(elf):
@@ -120,24 +130,14 @@ def part_map(syms, ndx, base, size):
     return merged
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("elf")
-    ap.add_argument("--format", choices=["toml", "cpp"], default="toml")
-    ap.add_argument("--parts-dir", default=".local/nes-emulator",
-                    help="directory with extract-nes-emulator.py output")
-    ap.add_argument("--parts", default="part1,part2,part3,part4,part5,part6",
-                    help="comma-separated Parts to emit")
-    args = ap.parse_args()
-    wanted = set(args.parts.split(","))
-    syms = readelf_symbols(args.elf)
-    idx = section_indices(args.elf)
+def derive(elf, parts_dir, wanted):
+    syms = readelf_symbols(elf)
+    idx = section_indices(elf)
     result = []
     for name, sec, base, size, sha in PARTS:
         if name not in wanted:
             continue
         runs = part_map(syms, idx[sec], base, size)
-        end = base + size
         if name == "part6":
             # Clip the toolchain-specific tail; append the ROM thunk run.
             runs = [[a, min(b, PART6_TAIL_DATA[0]), k] for a, b, k in runs
@@ -161,92 +161,125 @@ def main():
         # pools of `ldr rN,=fn ; bx rN`) that land exactly on a decomp symbol
         # inside a code run of the matching mode. Local (non-FUNC) handlers
         # such as Opcode_* are reached only this way.
-        path = os.path.join(args.parts_dir, f"{name}.bin")
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                blob = f.read()
-            sym_addrs = {s["addr"] & ~1 for s in syms if s["ndx"] == idx[sec]}
-            have = {a for a, _ in seeds}
-            for ra, rb, k in runs:
-                if k != "$d":
+        path = os.path.join(parts_dir, f"{name}.bin")
+        with open(path, "rb") as f:
+            blob = f.read()
+        assert len(blob) == size and hashlib.sha256(blob).hexdigest() == sha, name
+        sym_addrs = {s["addr"] & ~1 for s in syms if s["ndx"] == idx[sec]}
+        have = {a for a, _ in seeds}
+        for ra, rb, k in runs:
+            if k != "$d":
+                continue
+            for off in range((ra - base + 3) & ~3, rb - base - 3, 4):
+                w = int.from_bytes(blob[off:off + 4], "little")
+                t, thumb_bit = w & ~1, w & 1
+                if not (base <= t < base + size) or t in have or t not in sym_addrs:
                     continue
-                for off in range((ra - base + 3) & ~3, rb - base - 3, 4):
-                    w = int.from_bytes(blob[off:off + 4], "little")
-                    t, thumb_bit = w & ~1, w & 1
-                    if not (base <= t < base + size) or t in have or t not in sym_addrs:
-                        continue
-                    if name == "part6" and t >= PART6_TAIL_DATA[0]:
-                        continue
-                    for ca, cb, ck in runs:
-                        if ca <= t < cb and ck == ("$t" if thumb_bit else "$a"):
-                            seeds.append((t, "thumb" if thumb_bit else "arm"))
-                            have.add(t)
-                            break
+                if name == "part6" and t >= PART6_TAIL_DATA[0]:
+                    continue
+                for ca, cb, ck in runs:
+                    if ca <= t < cb and ck == ("$t" if thumb_bit else "$a"):
+                        seeds.append((t, "thumb" if thumb_bit else "arm"))
+                        have.add(t)
+                        break
         seeds.sort()
-        result.append((name, base, size, runs, seeds, sha))
+        mode = {"$a": "arm", "$t": "thumb", "$d": "data"}
+        result.append({
+            "part": name, "section": sec, "load_address": base, "size": size,
+            "sha256": sha,
+            "runs": [(a, b, mode[k]) for a, b, k in runs],
+            "seeds": seeds,
+        })
+    return result
 
-    if args.format == "toml":
-        for name, base, size, runs, seeds, sha in result:
-            print(f"[[executable_image]]\nid = \"nes_{name}\"\n"
-                  f"path = \".local/nes-emulator/{name}.bin\"\n"
-                  f"load_address = 0x{base:08X}\nsize = 0x{size:X}\n"
-                  f"sha256 = \"{sha}\"\noverlay = true\nnote = \"NES emulator {name}\"\n")
-        for name, base, size, runs, seeds, sha in result:
-            print(f"# ---- {name}: 0x{base:08X}..0x{base+size:08X}")
-            for a, b, k in runs:
-                if k == "$d":
-                    print(f"[[data_range]]\nstart = 0x{a:08X}\nend = 0x{b:08X}\n"
-                          f'note = "NES {name} data/literals"\nimage = "nes_{name}"\n')
-            for a, mode in seeds:
-                if a in SKIPPED_SEEDS:
-                    print(f"# NOT SEEDED 0x{a:08X} {mode}: {SKIPPED_SEEDS[a]}\n")
-                    continue
-                print(f"[[extra_func]]\naddr = 0x{a:08X}\nmode = \"{mode}\"\n"
-                      f'name = "nes_{name}_{a:08x}"\ndispatch = false\n'
-                      f'image = "nes_{name}"\n')
-    else:
-        print("// Generated by scripts/derive-nes-emulator-map.py --format cpp.")
-        print("// Addresses, modes and SHA-256 digests only; no ROM-derived bytes.")
-        print("// gate runs = whole image minus runtime-proven mutable data; the gate")
-        print("// SHA-256 covers those runs (code + literal pools baked into generated code).")
-        print("#pragma once\n#include <cstddef>\n#include <cstdint>\n")
-        print("namespace mzm_nes_emulator {\n")
-        print("struct CodeRun { std::uint32_t start; std::uint32_t end; };\n")
-        for name, base, size, runs, seeds, sha in result:
-            print(f"// Code runs from the decomp mapping symbols (test classification only).")
-            print(f"inline constexpr CodeRun k_{name}_code[] = {{")
-            for a, b, k in runs:
-                if k != "$d":
-                    print(f"    {{0x{a:08X}u, 0x{b:08X}u}},")
-            print("};")
-            if name in GATE_CODE_ONLY:
-                gate = [(a, b) for a, b, k in runs if k != "$d"]
-            else:
-                cuts = sorted(MUTABLE_DATA.get(name, []))
-                gate, cur = [], base
-                for ca, cb in cuts:
-                    if ca > cur:
-                        gate.append((cur, ca))
-                    cur = max(cur, cb)
-                if cur < base + size:
-                    gate.append((cur, base + size))
-            path = os.path.join(args.parts_dir, f"{name}.bin")
-            with open(path, "rb") as f:
-                img = f.read()
-            assert len(img) == size, (name, len(img), size)
-            assert hashlib.sha256(img).hexdigest() == sha, name
-            h = hashlib.sha256()
-            for a, b in gate:
-                h.update(img[a - base:b - base])
-            print(f"inline constexpr CodeRun k_{name}_gate[] = {{")
-            for a, b in gate:
-                print(f"    {{0x{a:08X}u, 0x{b:08X}u}},")
-            print("};")
-            print(f'inline constexpr const char* k_{name}_gate_sha256 =\n    "{h.hexdigest()}";')
-            # Cheap first stage: SHA-256 of the first 32 gated bytes.
-            first = b"".join(img[a - base:b - base] for a, b in gate)[:32]
-            print(f'inline constexpr const char* k_{name}_prefilter_sha256 =\n    "{hashlib.sha256(first).hexdigest()}";\n')
-        print("}  // namespace mzm_nes_emulator")
+
+def emit_canonical(result):
+    out = ["# Canonical NES emulator map, USA rev 0 (schema 1).",
+           "#",
+           "# Structural metadata only: image geometry and digests, code/data",
+           "# runs, function seeds, runtime-proven mutable ranges. No ROM-derived",
+           "# bytes. Consumed by scripts/generate-nes-emulator-config.py.",
+           "# Verified against a locally built nested decomp ELF with",
+           "# scripts/derive-nes-emulator-map.py --compare (maintainer oracle).",
+           "", "schema = 1", ""]
+    for img in result:
+        name = img["part"]
+        out += [f"[[image]]", f'id = "nes_{name}"', f'part = "{name}"',
+                f'section = "{img["section"]}"',
+                f'load_address = 0x{img["load_address"]:08X}',
+                f'size = 0x{img["size"]:X}', f'sha256 = "{img["sha256"]}"']
+        out += ["", "# runs: complete tiling of the image, [start, end, mode]",
+                "runs = ["]
+        out += [f'  [0x{a:08X}, 0x{b:08X}, "{m}"],' for a, b, m in img["runs"]]
+        out += ["]"]
+        for m in ("arm", "thumb"):
+            out += ["", f"seeds_{m} = ["]
+            addrs = [a for a, mm in img["seeds"] if mm == m]
+            for i in range(0, len(addrs), 6):
+                out.append("  " + " ".join(f"0x{a:08X}," for a in addrs[i:i + 6]))
+            out += ["]"]
+        for a, b in sorted(MUTABLE_DATA.get(name, [])):
+            out += ["", "[[image.mutable]]", f"start = 0x{a:08X}", f"end = 0x{b:08X}",
+                    f'note = "{MUTABLE_NOTES[(name, a)]}"']
+        out += [""]
+    return "\n".join(out)
+
+
+def compare(result, canonical_path):
+    import tomllib
+    with open(canonical_path, "rb") as f:
+        canon = tomllib.load(f)
+    by_part = {i["part"]: i for i in canon["image"]}
+    problems = []
+    for img in result:
+        c = by_part.get(img["part"])
+        if c is None:
+            problems.append(f'{img["part"]}: missing from canonical map')
+            continue
+        for key in ("section", "load_address", "size", "sha256"):
+            if c[key] != img[key]:
+                problems.append(f'{img["part"]}: {key} canonical={c[key]!r} derived={img[key]!r}')
+        cr = sorted((a, b, m) for a, b, m in c["runs"])
+        dr = sorted(img["runs"])
+        problems += [f'{img["part"]}: run only in canonical {r}' for r in set(cr) - set(dr)]
+        problems += [f'{img["part"]}: run only in derived {r}' for r in set(dr) - set(cr)]
+        cs = {(a, "arm") for a in c["seeds_arm"]} | {(a, "thumb") for a in c["seeds_thumb"]}
+        ds = set(img["seeds"])
+        problems += [f'{img["part"]}: seed only in canonical 0x{a:08X} {m}' for a, m in sorted(cs - ds)]
+        problems += [f'{img["part"]}: seed only in derived 0x{a:08X} {m}' for a, m in sorted(ds - cs)]
+    return problems
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--elf", required=True, help="locally built nested decomp ELF (oracle)")
+    ap.add_argument("--compare", metavar="CANONICAL",
+                    help="derive from the ELF and fail if it diverges from this map")
+    ap.add_argument("--emit-candidate", metavar="PATH",
+                    help="write the derived candidate canonical map here")
+    ap.add_argument("--parts-dir", default=".local/nes-emulator",
+                    help="directory with extract-nes-emulator.py output")
+    ap.add_argument("--parts", default="part1,part2,part3,part4,part5,part6")
+    args = ap.parse_args()
+    if not args.compare and not args.emit_candidate:
+        ap.error("nothing to do: pass --compare and/or --emit-candidate")
+    result = derive(args.elf, args.parts_dir, set(args.parts.split(",")))
+    if args.emit_candidate:
+        with open(args.emit_candidate, "w") as f:
+            f.write(emit_canonical(result))
+        print(f"candidate written: {args.emit_candidate}")
+    if args.compare:
+        problems = compare(result, args.compare)
+        for p in problems:
+            print("DIVERGE:", p)
+        n_seeds = sum(len(i["seeds"]) for i in result)
+        n_runs = sum(len(i["runs"]) for i in result)
+        if problems:
+            print(f"ORACLE COMPARE FAIL: {len(problems)} difference(s)")
+            return 1
+        print(f"ORACLE COMPARE PASS: {len(result)} images, {n_runs} runs, {n_seeds} seeds match {args.compare}")
+    return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

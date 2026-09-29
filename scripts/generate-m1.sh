@@ -23,6 +23,8 @@ OUT="${MZM_GENERATED:-$REPO/generated}"
 LOG_DIR="$REPO/.local"
 LOG="$LOG_DIR/m1-generate.log"
 OVERLAY="$LOG_DIR/BMXE_symbols.toml"
+NES_MAP="$REPO/configs/nes-emulator-map-us.toml"
+NES_CONFIG="$LOG_DIR/mzm-us-nes-emulator.toml"
 
 mkdir -p "$LOG_DIR"
 rm -rf "$OUT"
@@ -32,7 +34,7 @@ for required in \
     "$BUILD/gba_recompile" \
     "$ROM" \
     "$REPO/configs/mzm-us.toml" \
-    "$REPO/configs/mzm-us-nes-emulator.toml" \
+    "$NES_MAP" \
     "$IMPORT/BMXE_symbols.toml" \
     "$IMPORT/imported_symbols.tsv" \
     "$IMPORT/imported_data_symbols.tsv"
@@ -43,8 +45,25 @@ do
     fi
 done
 
+echo "=== M1A VERIFY LEGAL USA ROM (SHA-1) ==="
+ROM_SHA1="5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8"
+if [[ "$(sha1sum "$ROM" | cut -d' ' -f1)" != "$ROM_SHA1" ]]; then
+    echo "ROM SHA-1 mismatch; expected USA rev 0 $ROM_SHA1" >&2
+    exit 2
+fi
+
+echo "=== M1A EXTRACT NES PAYLOAD FROM LOCAL ROM ==="
+python3 "$REPO/scripts/extract-nes-payload.py" "$ROM" "$REPO/.local/nes-payload-usa.bin"
+
 echo "=== M1A EXTRACT NES EMULATOR IMAGES FROM LOCAL ROM ==="
 python3 "$REPO/scripts/extract-nes-emulator.py" "$ROM" --out-dir "$REPO/.local/nes-emulator"
+
+echo "=== M1A EXPAND CANONICAL NES MAP (no nested ELF required) ==="
+# Paths in the expanded config are relative to the repo root.
+cd "$REPO"
+python3 "$REPO/scripts/generate-nes-emulator-config.py" --map "$NES_MAP" \
+    --config-out "$NES_CONFIG" --parts-dir "$REPO/.local/nes-emulator" \
+    --check-header "$REPO/src/mzm_nes_emulator_map.h"
 
 echo "=== M1A PREPARE REVIEWED NES SYMBOLS OVERLAY ==="
 python3 "$REPO/scripts/prepare-nes-overlay.py" "$IMPORT/BMXE_symbols.toml" "$OVERLAY"
@@ -54,7 +73,7 @@ echo "=== M1A GENERATE MZM CORPUS ==="
 "$BUILD/gba_recompile" \
     --rom "$ROM" \
     --config "$REPO/configs/mzm-us.toml" \
-    --config "$REPO/configs/mzm-us-nes-emulator.toml" \
+    --config "$NES_CONFIG" \
     --config "$OVERLAY" \
     --symbols "$IMPORT/imported_symbols.tsv" \
     --data-symbols "$IMPORT/imported_data_symbols.tsv" \
