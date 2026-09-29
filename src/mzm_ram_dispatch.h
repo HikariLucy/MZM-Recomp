@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // Install MZM-specific dynamic RAM dispatch support.
 //
 // The hook recognizes byte-identical copies of two transient stack-local
@@ -8,3 +10,7 @@ void mzm_install_ram_dispatch_hook();
 
 // Opt-in M4 diagnostics; called after run_game returns. Silent by default.
 void mzm_report_ram_dispatch();
+
+// Test/diagnostic counters for the Chozodia byte gate.
+void mzm_chozodia_dispatch_counts(std::uint64_t& attempts,
+                                  std::uint64_t& matches);

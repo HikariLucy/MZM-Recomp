@@ -40,3 +40,13 @@ addr = 0x030016C4
 mode = "thumb"
 name = "clipdatacode_entry"
 note = "entry of the fixed clipdataCode RAM copy"
+
+# Escape HBlank callback: DMA copies 0x40 bytes, while decoded instructions
+# end before the literal pool. Ordinary static dispatch must never enter it.
+[[extra_func]]
+addr = 0x03001730
+source_addr = 0x08087938
+mode = "thumb"
+name = "chozodia_hblank_ram"
+dispatch = false
+note = "byte-verified Chozodia Escape HBlank RAM image"

@@ -107,21 +107,23 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
         return 1;
     }
 
-    if (pc == mzm_chozodia::kRuntimeStart) {
+    if (pc >= mzm_chozodia::kRuntimeStart &&
+        pc < mzm_chozodia::kRuntimeStart + mzm_chozodia::kFunctionSize) {
         ++g_stats.chozodia_attempts;
         if (mzm_chozodia::identify(pc, true, [](std::uint32_t addr) {
                 return bus_read_u8(addr);
             })) {
+            const int invoked = runtime_invoke_private_entry(pc, thumb);
+            if (!invoked) return 0; // data or un-emitted instruction PC
             if (++g_stats.chozodia_matches == 1 && g_stats.trace) {
                 std::fprintf(stderr,
                              "mzm_ram_dispatch kind=chozodia_hblank "
-                             "runtime_pc=0x%08x source_pc=0x%08x match=1 native=0 hits=1\n",
+                             "runtime_pc=0x%08x source_pc=0x%08x match=1 native=1 hits=1\n",
                              pc, mzm_chozodia::kSourceStart);
                 std::fflush(stderr);
             }
+            return 1;
         }
-        // The generated ROM translation exposes ROM PC to IRQ preemption and
-        // uses ROM-relative timing. Image identity alone cannot authorize it.
         return 0;
     }
 
@@ -161,6 +163,12 @@ void mzm_install_ram_dispatch_hook() {
     const char* capture = std::getenv("MZM_M4_CAPTURE_FIRST_HAZE");
     g_stats.capture_requested = capture && capture[0];
     g_runtime_ram_dispatch_hook = &mzm_ram_dispatch;
+}
+
+void mzm_chozodia_dispatch_counts(std::uint64_t& attempts,
+                                  std::uint64_t& matches) {
+    attempts = g_stats.chozodia_attempts;
+    matches = g_stats.chozodia_matches;
 }
 
 void mzm_report_ram_dispatch() {

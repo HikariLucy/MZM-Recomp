@@ -12,11 +12,12 @@ constexpr std::uint32_t kFunctionSize = 0x3cu;
 constexpr std::uint32_t kCopySize = 0x40u;
 constexpr std::uint32_t kBufferSize = 0x80u;
 
-// Image identification only. Native dispatch requires RAM-PC semantics for
-// IRQ preemption, resumption, and cycle timing in the generated function.
+// Verify the complete DMA image for both root and interior resume PCs.
+// The generated private table makes the final instruction-boundary decision.
 template <typename ReadByte>
 bool identify(std::uint32_t pc, bool thumb, ReadByte read_byte) {
-    if (!thumb || pc != kRuntimeStart) return false;
+    if (!thumb || pc < kRuntimeStart ||
+        pc >= kRuntimeStart + kFunctionSize || (pc & 1u)) return false;
     for (std::uint32_t i = 0; i < kCopySize; ++i) {
         if (read_byte(kRuntimeStart + i) != read_byte(kSourceStart + i))
             return false;

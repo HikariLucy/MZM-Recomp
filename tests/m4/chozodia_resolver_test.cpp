@@ -15,7 +15,8 @@ void check(bool ok) {
     if (!ok) throw std::runtime_error("Chozodia image assertion failed");
 }
 
-void exercise(const std::array<std::uint8_t, mzm_chozodia::kCopySize>& source) {
+void exercise(const std::array<std::uint8_t, mzm_chozodia::kCopySize>& source,
+              const std::array<std::uint8_t, mzm_chozodia::kCopySize>* clipdata) {
     using namespace mzm_chozodia;
     static_assert(kRuntimeStart == 0x030016c4u + 0x6cu);
     static_assert(kFunctionSize == 0x3cu && kCopySize == 0x20u * 2u);
@@ -34,7 +35,8 @@ void exercise(const std::array<std::uint8_t, mzm_chozodia::kCopySize>& source) {
     check(identify(kThumbPointer & ~1u, true, read));
     check(!identify(kRuntimeStart, false, read));
     check(!identify(kThumbPointer, true, read));
-    check(!identify(kRuntimeStart + 2u, true, read));
+    check(identify(kRuntimeStart + 2u, true, read));
+    check(!identify(kRuntimeStart + kFunctionSize, true, read));
     check(!identify(0x03001944u, true, read));
     ram[kCopySize - 1u] ^= 1u;
     check(!identify(kRuntimeStart, true, read));
@@ -53,11 +55,17 @@ void exercise(const std::array<std::uint8_t, mzm_chozodia::kCopySize>& source) {
     ram.fill(0x55u);  // unrelated union contents
     if (source[0] == 0x55u) ram[0] ^= 1u;
     check(!identify(kRuntimeStart, true, read));
+    if (clipdata) {
+        for (std::uint32_t i = 0; i < kCopySize; ++i) ram[i] = (*clipdata)[i];
+        check(!identify(kRuntimeStart, true, read));
+        check(!identify(kRuntimeStart + 2u, true, read));
+    }
 }
 }  // namespace
 
 int main(int argc, char** argv) {
     std::array<std::uint8_t, mzm_chozodia::kCopySize> source{};
+    std::array<std::uint8_t, mzm_chozodia::kCopySize> clipdata{};
     if (argc == 1) {
         for (std::size_t i = 0; i < source.size(); ++i)
             source[i] = static_cast<std::uint8_t>((i * 37u + 11u) & 0xffu);
@@ -72,10 +80,17 @@ int main(int argc, char** argv) {
             std::cerr << "Cannot read Chozodia source window\n";
             return 2;
         }
+        rom.seekg(0x08057F7Cu - kRomBase +
+                  (mzm_chozodia::kRuntimeStart - 0x030016C4u));
+        if (!rom.read(reinterpret_cast<char*>(clipdata.data()),
+                      clipdata.size())) {
+            std::cerr << "Cannot read clipdata overlap window\n";
+            return 2;
+        }
     } else {
         std::cerr << "Usage: chozodia_resolver_test [--rom local-USA.gba]\n";
         return 2;
     }
-    exercise(source);
+    exercise(source, argc == 3 ? &clipdata : nullptr);
     std::cout << "Chozodia 64-byte image identified; negative cases rejected\n";
 }

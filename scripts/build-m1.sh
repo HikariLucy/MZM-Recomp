@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="${REPO:-$HOME/proyectos/Recomp/MZM-Recomp}"
 WORK="${WORK:-$HOME/proyectos/Recomp/Metroid-ZeroMissionRecomp}"
-GBARECOMP="${GBARECOMP:-$WORK/_m0/upstream/gbarecomp}"
+GBARECOMP="${GBARECOMP_ROOT:-${GBARECOMP:-$WORK/_m0/upstream/gbarecomp}}"
 BUILD_DIR="${MZM_BUILD_DIR:-$REPO/build-m1}"
 JOBS="${MZM_BUILD_JOBS:-4}"
 BIOS_GENERATED="${MZM_BIOS_GENERATED:-$REPO/.local/generated-bios}"

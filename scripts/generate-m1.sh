@@ -3,7 +3,12 @@ set -euo pipefail
 
 REPO="${REPO:-$HOME/proyectos/Recomp/MZM-Recomp}"
 WORK="${WORK:-$HOME/proyectos/Recomp/Metroid-ZeroMissionRecomp}"
-GBARECOMP="${GBARECOMP:-$WORK/_m0/upstream/gbarecomp}"
+GBARECOMP="${GBARECOMP_ROOT:-${GBARECOMP:-$WORK/_m0/upstream/gbarecomp}}"
+PIN="644ec842f8b2106f21fdef6ae05ae997c8e49869"
+if [[ "$(git -C "$GBARECOMP" rev-parse HEAD)" != "$PIN" ]]; then
+    echo "GBARecomp revision must be $PIN" >&2
+    exit 2
+fi
 BUILD="${GBARECOMP_BUILD:-$GBARECOMP/build-m0}"
 ROM="${MZM_ROM:-$WORK/Metroid - Zero Mission (USA).gba}"
 IMPORT="${MZM_IMPORT:-$WORK/_m0/evidence/m0.5/symbol-import}"

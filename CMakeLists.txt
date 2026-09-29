@@ -23,6 +23,18 @@ if(NOT EXISTS "${GBARECOMP_ROOT}/CMakeLists.txt")
         "GBARECOMP_ROOT is not a gbarecomp checkout:\n  ${GBARECOMP_ROOT}")
 endif()
 
+# The source path is supplied by the builder; the revision is immutable.
+set(MZM_GBARECOMP_PIN "644ec842f8b2106f21fdef6ae05ae997c8e49869")
+execute_process(COMMAND git -C "${GBARECOMP_ROOT}" rev-parse HEAD
+    OUTPUT_VARIABLE MZM_GBARECOMP_HEAD OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE MZM_GBARECOMP_GIT_RESULT)
+if(NOT MZM_GBARECOMP_GIT_RESULT EQUAL 0 OR
+   NOT MZM_GBARECOMP_HEAD STREQUAL MZM_GBARECOMP_PIN)
+    message(FATAL_ERROR
+        "GBARecomp must be at ${MZM_GBARECOMP_PIN}; found "
+        "${MZM_GBARECOMP_HEAD} in ${GBARECOMP_ROOT}")
+endif()
+
 add_subdirectory("${GBARECOMP_ROOT}" gbarecomp_build EXCLUDE_FROM_ALL)
 
 file(GLOB GAME_GENERATED_SOURCES CONFIGURE_DEPENDS
@@ -35,12 +47,19 @@ if(NOT GAME_GENERATED_SOURCES)
         "Run scripts/generate-m1.sh first.")
 endif()
 
+add_library(mzm_generated_objects OBJECT ${GAME_GENERATED_SOURCES})
+target_include_directories(mzm_generated_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/generated"
+    "${GBARECOMP_ROOT}/src/armv4t"
+    "${GBARECOMP_ROOT}/src/gba"
+    "${GBARECOMP_ROOT}/src/runtime")
+
 add_executable(MZMRecomp
     src/main.cpp
     src/mzm_log.cpp
     src/mzm_ram_dispatch.cpp
     src/mzm_milestone_probe.cpp
-    ${GAME_GENERATED_SOURCES}
+    $<TARGET_OBJECTS:mzm_generated_objects>
 )
 
 # Generated guest translation units are intentionally numerous and large.
@@ -93,6 +112,26 @@ if(BUILD_TESTING)
     add_executable(mzm_chozodia_resolver_test tests/m4/chozodia_resolver_test.cpp)
     target_include_directories(mzm_chozodia_resolver_test PRIVATE src)
     add_test(NAME mzm-chozodia-resolver COMMAND mzm_chozodia_resolver_test)
+
+    set(MZM_TEST_ROM "" CACHE FILEPATH "Optional local USA ROM for native RAM tests")
+    if(UNIX AND MZM_TEST_ROM)
+        add_executable(mzm_chozodia_native_test
+            tests/m4/chozodia_native_test.cpp
+            src/mzm_ram_dispatch.cpp
+            src/mzm_milestone_probe.cpp
+            $<TARGET_OBJECTS:mzm_generated_objects>)
+        target_include_directories(mzm_chozodia_native_test PRIVATE
+            src generated
+            "${GBARECOMP_ROOT}/src/armv4t"
+            "${GBARECOMP_ROOT}/src/gba"
+            "${GBARECOMP_ROOT}/src/runtime")
+        target_link_libraries(mzm_chozodia_native_test PRIVATE
+            "-Wl,--start-group" gbarecomp_runtime gbarecomp_debug
+            gbarecomp_gba gbarecomp_armv4t "-Wl,--end-group")
+        add_test(NAME mzm-chozodia-native
+            COMMAND mzm_chozodia_native_test
+                "${MZM_TEST_ROM}")
+    endif()
 endif()
 
 
