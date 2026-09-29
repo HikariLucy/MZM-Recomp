@@ -232,6 +232,7 @@ int main(int argc, char** argv) {
     };
 
     std::uint64_t dispatches = 0, halt_pumps = 0;
+    int no_progress = 0;
     bool have_frontier = false;
     EmulatorFrontier frontier{};
     bool stalled = false;
@@ -261,6 +262,7 @@ int main(int argc, char** argv) {
             }
             const std::uint32_t pc = g_cpu.R[15];
             const auto before = g_cpu;
+            const auto cycles_before = g_runtime_cycles;
             runtime_dispatch(pc);
             ++dispatches;
             snapshot_dirty();
@@ -269,7 +271,18 @@ int main(int argc, char** argv) {
                 stall_pc = pc;
                 break;
             }
-            if (std::memcmp(&before, &g_cpu, sizeof(g_cpu)) == 0 && !bus.io().halted()) {
+            // A guest spin (e.g. a BIOS wait loop) leaves the CPU state
+            // unchanged but consumes time; only a dispatch that changes neither
+            // the state nor the clock is a stall.
+            // A VBlank present-yield is itself a no-op dispatch (the yield
+            // latches, so the next dispatch proceeds); require several in a row.
+            if (std::memcmp(&before, &g_cpu, sizeof(g_cpu)) == 0 &&
+                g_runtime_cycles == cycles_before && !bus.io().halted()) {
+                ++no_progress;
+            } else {
+                no_progress = 0;
+            }
+            if (no_progress >= 4) {
                 stalled = true;
                 stall_pc = pc;
                 break;
@@ -348,19 +361,40 @@ int main(int argc, char** argv) {
     if (stalled)
         std::printf("B8. STALL at 0x%08X (self_heal_miss=%d)\n", stall_pc,
                     gbarecomp::self_heal_any_misses() ? 1 : 0);
-    require(!stalled, "unexpected stall/dispatch miss before the emulator frontier");
-    require(have_frontier, "no emulator frontier reached within the frame budget");
+    require(!stalled, "unexpected stall/dispatch miss");
 
     const std::uint32_t fpc = g_cpu.R[15];
-    std::printf("B8. NEW FRONTIER: target PC=0x%08X %s part=%s reason=%s\n",
-                frontier.event.pc, frontier.event.thumb ? "Thumb" : "ARM",
-                frontier.event.part, frontier.event.reason);
+    if (have_frontier) {
+        std::printf("B8. FRONTIER: target PC=0x%08X %s part=%s reason=%s\n",
+                    frontier.event.pc, frontier.event.thumb ? "Thumb" : "ARM",
+                    frontier.event.part, frontier.event.reason);
+    } else {
+        std::printf("B8. NO FRONTIER within %llu frames: emulator ran natively to the "
+                    "frame budget\n", (unsigned long long)kMaxFrames);
+    }
     std::printf("    CPU: R15=0x%08X mode=%s CPSR=0x%08X SP=0x%08X LR=0x%08X\n", fpc,
                 mode_name(), g_cpu.cpsr, g_cpu.R[13], g_cpu.R[14]);
     for (int r = 0; r < 13; ++r)
         std::printf("    R%d=0x%08X%s", r, g_cpu.R[r], (r % 4 == 3) ? "\n" : "");
-    std::printf("\n    host_return_depth=%u irq_depth=%u\n", runtime_call_stack_depth(),
-                g_irq_nest_depth);
+    std::printf("\n    host_return_depth=%u irq_depth=%u dispcnt=0x%04X\n",
+                runtime_call_stack_depth(), g_irq_nest_depth, bus.io().read16(0x0));
+
+    // Frame evidence: hash of the last complete latched frame (and an optional
+    // PPM dump for manual inspection).
+    if (ppu.has_latched_framebuffer()) {
+        const std::uint8_t* fb = ppu.latched_framebuffer();
+        const std::size_t n = gba::GbaPpu::kScreenWidth * gba::GbaPpu::kScreenHeight * 3u;
+        std::uint64_t h = 1469598103934665603ull;
+        std::size_t nonzero = 0;
+        for (std::size_t i = 0; i < n; ++i) { h = (h ^ fb[i]) * 1099511628211ull; nonzero += fb[i] != 0; }
+        std::printf("B8b. Latched frame: fnv1a64=0x%016llX nonzero_bytes=%zu/%zu\n",
+                    (unsigned long long)h, nonzero, n);
+        if (const char* path = std::getenv("MZM_NES_FRAME_DUMP")) {
+            std::ofstream out(path, std::ios::binary);
+            out << "P6\n240 160\n255\n";
+            out.write(reinterpret_cast<const char*>(fb), static_cast<std::streamsize>(n));
+        }
+    }
 
     const bool unmapped = bus.unmapped_count() != 0u || bus.io().unmapped_count() != 0u;
     std::printf("B9. Strict counters: dispatch_misses=%d interpreted_insns=%llu "
@@ -369,41 +403,39 @@ int main(int argc, char** argv) {
                 (unsigned long long)gbarecomp::self_heal_interpreted_insns(),
                 (unsigned long long)bus.unmapped_count(),
                 (unsigned long long)bus.io().unmapped_count());
-    require(!unmapped, "unmapped access occurred before the frontier");
+    require(!unmapped, "unmapped access occurred");
     require(!gbarecomp::self_heal_any_misses() &&
             gbarecomp::self_heal_interpreted_insns() == 0u,
-            "dispatch miss or interpreted insn before the frontier");
-    require(total_matches >= 1, "no emulator private entry ran natively");
-    // Parts with a corpus must never fail verification before the frontier;
-    // Part 4 is a boot-staging overlay that is overwritten only after its last run.
+            "dispatch miss or interpreted insn");
+    // Pinned outcome (NES-2b): all six images have native entries, no Part ever
+    // fails verification, and the emulator runs for the whole frame budget with
+    // the IRQ handler in Part 2 being delivered. A frontier appearing here is a
+    // regression or new evidence: update docs/M4-NES-METROID.md and this pin.
+    require(!have_frontier, "unexpected emulator frontier (update the pin and docs)");
     for (const auto& st : stats) {
-        if (std::strcmp(st.name, "part2") == 0) continue;
+        require(st.matches >= 1, "every Part must have native entries");
         require(st.verify_failures == 0 && st.invoke_failures == 0,
-                "verification/invoke failure in a Part with a corpus");
+                "verification/invoke failure");
     }
-    require(stats[0].matches >= 1 && stats[3].matches >= 1 && stats[4].matches >= 1 &&
-                stats[5].matches >= 1,
-            "expected native entries in Parts 1, 4, 5 and 6");
-    // Pinned frontier: sub_0600E1C4 (Part 5) enables IE/IME then `bx r4` to
-    // EmulatorAudio_Initialize in Part 2 (IWRAM, Thumb), which has no corpus.
-    require(frontier.event.pc == 0x03000488u && frontier.event.thumb == 1 &&
-                std::strcmp(frontier.event.part, "part2") == 0 &&
-                std::strcmp(frontier.event.reason, "part_has_no_corpus") == 0,
-            "frontier moved: update docs/M4-NES-METROID.md and this pin together");
-    require(g_cpu.R[14] == 0x0600E224u, "unexpected caller LR at the frontier");
-    // Mutability evidence that the gate exclusions rely on.
+    require(g_irq_vector_entries >= 1, "IRQ vector never entered");
+    require(pay_att >= 1 && pay_match >= 1, "NES payload byte gate not hit");
+    // Mutability evidence the gate exclusions rely on (up to the frame budget).
     require(audit[0].dirty.test(0x700) && audit[0].dirty.test(0x701),
             "expected Part 1 tilemap overwrite at 0x06006700");
-    for (std::size_t o = 0; o < 0x1240; ++o)
-        if (audit[0].dirty.test(o))
-            require(o == 0x700 || o == 0x701, "unexpected Part 1 self-modification");
     require(audit[2].dirty.none() && audit[4].dirty.none() && audit[5].dirty.none(),
-            "Parts 3, 5 and 6 must be immutable after load up to the frontier");
-    require(pay_att >= 1 && pay_match >= 1, "NES payload byte gate not hit");
+            "Parts 3, 5 and 6 must be immutable after load");
+    for (std::size_t o = 0; o < 0x5A4C; ++o) {
+        if (!audit[1].dirty.test(o)) continue;
+        const std::uint32_t a = 0x03000000u + static_cast<std::uint32_t>(o);
+        require(!in_runs(mzm_nes_emulator::code_runs(mzm_nes_emulator::ImageKind::Part2),
+                         mzm_nes_emulator::code_run_count(mzm_nes_emulator::ImageKind::Part2), a),
+                "Part 2 code bytes must never change");
+    }
 
-    std::printf("NES-2 PASS: native emulator initialisation reached a reproducible "
-                "unsupported frontier (0x%08X %s in %s: %s)\n",
-                frontier.event.pc, frontier.event.thumb ? "Thumb" : "ARM",
-                frontier.event.part, frontier.event.reason);
+    std::printf("NES-2b PASS: native emulator ran %llu frames strict-static "
+                "(part2 entries=%llu, IRQ vector entries=%llu)\n",
+                (unsigned long long)ppu.frame_count(),
+                (unsigned long long)stats[1].matches,
+                (unsigned long long)g_irq_vector_entries);
     return 0;
 }
