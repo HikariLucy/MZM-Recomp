@@ -46,34 +46,38 @@ PART6_TAIL_DATA = (0x0203E888, 0x0203E8A4)
 PART6_THUNKS = (0x0203E8A4, 0x0203E8E0)
 
 
-# Function seeds deliberately NOT emitted because the pinned generator cannot
-# yet translate them without a hard data_range collision (see the config
-# header and docs/M4-NES-METROID.md). They stay as documented uncovered
-# strict-static frontiers, never as generated code over data.
-SKIPPED_SEEDS = {
-    0x0600E474: "ldrne pc,[pc,r1,lsl #2] jump-table idiom; beq fall-through "
-                "edge enters table bytes 0x0600E4C0..0x0600E4D0",
-}
-
+# Function seeds deliberately NOT emitted (none at the moment). Before the
+# conditional-PC-load CFG fix, Part 5 0x0600E474 had to live here.
+SKIPPED_SEEDS = {}
 
 # Runs of an image that are PROVEN mutable data by runtime evidence
-# (tests/m4/nes_emulator_frontier_test.cpp mutability audit). Everything else
-# in an image -- code and literal pools, which generated code bakes in as
-# constants -- is byte-gated. Filled only from observed guest diffs.
+# (tests/m4/nes_emulator_frontier_test.cpp mutability audit) or by the linker
+# map (writable .data). Everything else in an image -- code and literal pools,
+# which generated code bakes in as constants -- is byte-gated.
 MUTABLE_DATA = {
     # sub_06006000 (font setup, Part 1 asm) does `strh r6,[0x06006700]` = 0x0182:
     # a BG screenblock-12 tilemap entry that overlays Part 1's own code
     # (`sub r5,r5,#32` at 0x06006700). Straight-line init in sub_06006558 has
     # already executed that instruction before the font-setup call, and the
     # overwrite is observed at boot; excluded so yield/resume re-entry into the
-    # function keeps verifying. Evidence: nes_emulator_frontier_test mutability audit.
+    # function keeps verifying.
     "part1": [(0x06006700, 0x06006702)],
+    # Part 2 (IWRAM): .data of part2.o (0x03002330..0x030023DC) and of
+    # part2_handwritten.o (0x030023DC..0x03002DF0) are initialised writable
+    # variables (linker map).
+    "part2": [(0x03002330, 0x03002DF0)],
 }
+# In-image bytes observed dirty by the frontier test (outside the ranges above).
+MUTABLE_OBSERVED = {
+    # sUnk_03005808 (`.4byte 0` inside part2_handwritten .text): the emulator
+    # state pointer written by the NES core and read by the IRQ handler
+    # sub_030057A8 (`ldr r0,sUnk_03005808`). Observed dirty at 0x03005809/0B.
+    "part2": [(0x03005808, 0x0300580C)],
+}
+for _name, _runs in MUTABLE_OBSERVED.items():
+    MUTABLE_DATA.setdefault(_name, []).extend(_runs)
 
-# Parts with no AOT corpus are identified by their code runs only: their
-# mutable variables (.data, in-text words) are not fully characterised and no
-# generated code bakes their literals.
-GATE_CODE_ONLY = {"part2"}
+GATE_CODE_ONLY = set()
 
 
 def readelf_symbols(elf):
@@ -121,7 +125,7 @@ def main():
     ap.add_argument("elf")
     ap.add_argument("--format", choices=["toml", "cpp"], default="toml")
     ap.add_argument("--parts-dir", default=".local/nes-emulator",
-                    help="directory with extract-nes-emulator.py output (cpp format)")
+                    help="directory with extract-nes-emulator.py output")
     ap.add_argument("--parts", default="part1,part2,part3,part4,part5,part6",
                     help="comma-separated Parts to emit")
     args = ap.parse_args()
@@ -152,6 +156,33 @@ def main():
                 if ra <= a < rb and k in ("$a", "$t"):
                     seeds.append((a, "thumb" if k == "$t" else "arm"))
                     break
+        # Indirect-transfer targets: pointer words stored in the image's data
+        # runs (function-pointer tables such as the 6502 opcode table, literal
+        # pools of `ldr rN,=fn ; bx rN`) that land exactly on a decomp symbol
+        # inside a code run of the matching mode. Local (non-FUNC) handlers
+        # such as Opcode_* are reached only this way.
+        path = os.path.join(args.parts_dir, f"{name}.bin")
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                blob = f.read()
+            sym_addrs = {s["addr"] & ~1 for s in syms if s["ndx"] == idx[sec]}
+            have = {a for a, _ in seeds}
+            for ra, rb, k in runs:
+                if k != "$d":
+                    continue
+                for off in range((ra - base + 3) & ~3, rb - base - 3, 4):
+                    w = int.from_bytes(blob[off:off + 4], "little")
+                    t, thumb_bit = w & ~1, w & 1
+                    if not (base <= t < base + size) or t in have or t not in sym_addrs:
+                        continue
+                    if name == "part6" and t >= PART6_TAIL_DATA[0]:
+                        continue
+                    for ca, cb, ck in runs:
+                        if ca <= t < cb and ck == ("$t" if thumb_bit else "$a"):
+                            seeds.append((t, "thumb" if thumb_bit else "arm"))
+                            have.add(t)
+                            break
+        seeds.sort()
         result.append((name, base, size, runs, seeds, sha))
 
     if args.format == "toml":
@@ -159,19 +190,20 @@ def main():
             print(f"[[executable_image]]\nid = \"nes_{name}\"\n"
                   f"path = \".local/nes-emulator/{name}.bin\"\n"
                   f"load_address = 0x{base:08X}\nsize = 0x{size:X}\n"
-                  f"sha256 = \"{sha}\"\nnote = \"NES emulator {name}\"\n")
+                  f"sha256 = \"{sha}\"\noverlay = true\nnote = \"NES emulator {name}\"\n")
         for name, base, size, runs, seeds, sha in result:
             print(f"# ---- {name}: 0x{base:08X}..0x{base+size:08X}")
             for a, b, k in runs:
                 if k == "$d":
                     print(f"[[data_range]]\nstart = 0x{a:08X}\nend = 0x{b:08X}\n"
-                          f'note = "NES {name} data/literals"\n')
+                          f'note = "NES {name} data/literals"\nimage = "nes_{name}"\n')
             for a, mode in seeds:
                 if a in SKIPPED_SEEDS:
                     print(f"# NOT SEEDED 0x{a:08X} {mode}: {SKIPPED_SEEDS[a]}\n")
                     continue
                 print(f"[[extra_func]]\naddr = 0x{a:08X}\nmode = \"{mode}\"\n"
-                      f'name = "nes_{name}_{a:08x}"\ndispatch = false\n')
+                      f'name = "nes_{name}_{a:08x}"\ndispatch = false\n'
+                      f'image = "nes_{name}"\n')
     else:
         print("// Generated by scripts/derive-nes-emulator-map.py --format cpp.")
         print("// Addresses, modes and SHA-256 digests only; no ROM-derived bytes.")
@@ -210,7 +242,10 @@ def main():
             for a, b in gate:
                 print(f"    {{0x{a:08X}u, 0x{b:08X}u}},")
             print("};")
-            print(f'inline constexpr const char* k_{name}_gate_sha256 =\n    "{h.hexdigest()}";\n')
+            print(f'inline constexpr const char* k_{name}_gate_sha256 =\n    "{h.hexdigest()}";')
+            # Cheap first stage: SHA-256 of the first 32 gated bytes.
+            first = b"".join(img[a - base:b - base] for a, b in gate)[:32]
+            print(f'inline constexpr const char* k_{name}_prefilter_sha256 =\n    "{hashlib.sha256(first).hexdigest()}";\n')
         print("}  // namespace mzm_nes_emulator")
 
 if __name__ == "__main__":

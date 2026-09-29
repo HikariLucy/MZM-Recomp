@@ -25,6 +25,8 @@ inline constexpr CodeRun k_part1_gate[] = {
 };
 inline constexpr const char* k_part1_gate_sha256 =
     "f2db71d2c1c037b408a5c08bd7a27ff9ee2079e50ca915c37bf4c85da065afc4";
+inline constexpr const char* k_part1_prefilter_sha256 =
+    "beac678d22574427d0bab89f1067c8338258dfc5a2ed2e04886303eee284d08f";
 
 // Code runs from the decomp mapping symbols (test classification only).
 inline constexpr CodeRun k_part2_code[] = {
@@ -174,153 +176,14 @@ inline constexpr CodeRun k_part2_code[] = {
     {0x03005844u, 0x03005A34u},
 };
 inline constexpr CodeRun k_part2_gate[] = {
-    {0x03000000u, 0x0300001Au},
-    {0x03000024u, 0x03000046u},
-    {0x03000050u, 0x03000076u},
-    {0x03000080u, 0x030000ACu},
-    {0x030000C0u, 0x030000D8u},
-    {0x030000E8u, 0x030000FAu},
-    {0x03000100u, 0x03000118u},
-    {0x03000124u, 0x03000134u},
-    {0x03000140u, 0x0300015Eu},
-    {0x03000170u, 0x0300017Au},
-    {0x03000180u, 0x030001A8u},
-    {0x030001B4u, 0x030001C0u},
-    {0x030001C4u, 0x030001EAu},
-    {0x030001F0u, 0x03000222u},
-    {0x0300023Cu, 0x0300027Eu},
-    {0x030002A4u, 0x03000304u},
-    {0x03000330u, 0x0300033Au},
-    {0x0300033Cu, 0x03000342u},
-    {0x03000348u, 0x0300034Eu},
-    {0x03000354u, 0x03000378u},
-    {0x03000380u, 0x030003BAu},
-    {0x030003D4u, 0x03000402u},
-    {0x03000404u, 0x03000406u},
-    {0x03000408u, 0x0300046Cu},
-    {0x0300047Cu, 0x030004C6u},
-    {0x030004E0u, 0x030004FAu},
-    {0x03000500u, 0x03000526u},
-    {0x0300053Cu, 0x0300055Au},
-    {0x03000564u, 0x0300058Au},
-    {0x03000590u, 0x03000596u},
-    {0x03000598u, 0x0300059Au},
-    {0x0300059Cu, 0x030005A0u},
-    {0x030005A0u, 0x03000614u},
-    {0x03000614u, 0x03000616u},
-    {0x03000618u, 0x0300061Cu},
-    {0x0300061Cu, 0x03000630u},
-    {0x03000630u, 0x03000632u},
-    {0x03000634u, 0x03000638u},
-    {0x03000638u, 0x03000684u},
-    {0x03000684u, 0x03000686u},
-    {0x03000688u, 0x0300068Cu},
-    {0x0300068Cu, 0x030006C8u},
-    {0x030006C8u, 0x030006CAu},
-    {0x030006CCu, 0x030006D0u},
-    {0x030006D0u, 0x03000700u},
-    {0x03000700u, 0x03000702u},
-    {0x03000704u, 0x03000708u},
-    {0x03000708u, 0x03000774u},
-    {0x03000774u, 0x03000776u},
-    {0x03000778u, 0x03000780u},
-    {0x03000784u, 0x0300078Au},
-    {0x03000790u, 0x030007A0u},
-    {0x030007A8u, 0x030007C0u},
-    {0x030007CCu, 0x03000806u},
-    {0x03000824u, 0x0300083Eu},
-    {0x03000848u, 0x03000862u},
-    {0x03000870u, 0x0300088Eu},
-    {0x0300089Cu, 0x030008ACu},
-    {0x030008B4u, 0x03000906u},
-    {0x03000918u, 0x03000928u},
-    {0x03000930u, 0x03000940u},
-    {0x03000948u, 0x0300096Au},
-    {0x030009A0u, 0x030009D0u},
-    {0x030009DCu, 0x03000A26u},
-    {0x03000A6Cu, 0x03000A70u},
-    {0x03000A70u, 0x03000D1Cu},
-    {0x03000D1Cu, 0x03000D1Eu},
-    {0x03000D20u, 0x03000D28u},
-    {0x03000D2Cu, 0x03000D32u},
-    {0x03000D38u, 0x03000D48u},
-    {0x03000D50u, 0x03000D68u},
-    {0x03000D74u, 0x03000D8Eu},
-    {0x03000DA0u, 0x03000DD4u},
-    {0x03000DECu, 0x03000E06u},
-    {0x03000E10u, 0x03000E32u},
-    {0x03000E40u, 0x03000E5Au},
-    {0x03000E68u, 0x03000E88u},
-    {0x03000E94u, 0x03000EA4u},
-    {0x03000EACu, 0x03000EFEu},
-    {0x03000F10u, 0x03000F20u},
-    {0x03000F28u, 0x03000F38u},
-    {0x03000F40u, 0x03000F70u},
-    {0x03000F7Cu, 0x03000FC6u},
-    {0x0300100Cu, 0x03001010u},
-    {0x03001010u, 0x03001258u},
-    {0x03001258u, 0x0300125Au},
-    {0x03001318u, 0x0300132Au},
-    {0x03001334u, 0x0300133Au},
-    {0x03001340u, 0x030013A4u},
-    {0x030013C8u, 0x030013E4u},
-    {0x030013F0u, 0x0300140Cu},
-    {0x03001418u, 0x0300144Cu},
-    {0x03001458u, 0x03001486u},
-    {0x03001494u, 0x030014A0u},
-    {0x030014A4u, 0x030014C0u},
-    {0x030014C8u, 0x030014D8u},
-    {0x030014E0u, 0x0300150Cu},
-    {0x03001518u, 0x03001548u},
-    {0x03001558u, 0x03001582u},
-    {0x03001594u, 0x030015D2u},
-    {0x0300160Cu, 0x03001610u},
-    {0x03001610u, 0x030016FCu},
-    {0x030016FCu, 0x030016FEu},
-    {0x03001730u, 0x03001738u},
-    {0x0300173Cu, 0x0300177Au},
-    {0x03001788u, 0x0300178Eu},
-    {0x03001794u, 0x030017BEu},
-    {0x030017D0u, 0x03001828u},
-    {0x03001840u, 0x0300185Au},
-    {0x03001864u, 0x03001874u},
-    {0x0300187Cu, 0x030018ACu},
-    {0x030018B8u, 0x030018D6u},
-    {0x030018E0u, 0x03001916u},
-    {0x03001930u, 0x03001940u},
-    {0x03001944u, 0x03001964u},
-    {0x03001970u, 0x03001986u},
-    {0x03001990u, 0x030019E4u},
-    {0x03001A24u, 0x03001A28u},
-    {0x03001A28u, 0x03001C0Cu},
-    {0x03001C0Cu, 0x03001C0Eu},
-    {0x03001C10u, 0x03001C52u},
-    {0x03001C58u, 0x03001C72u},
-    {0x03001C78u, 0x03001CFAu},
-    {0x03001D24u, 0x03001D2Au},
-    {0x03001D30u, 0x03001D68u},
-    {0x03001D7Cu, 0x03001EAAu},
-    {0x03001F00u, 0x03001F30u},
-    {0x03001F40u, 0x03001FE4u},
-    {0x0300200Cu, 0x03002154u},
-    {0x030021A8u, 0x030021AAu},
-    {0x030021E4u, 0x030022B2u},
-    {0x030022B4u, 0x030022B6u},
-    {0x030022B8u, 0x03002330u},
-    {0x03002DF0u, 0x03002FD0u},
-    {0x03003010u, 0x03003064u},
-    {0x03003088u, 0x030031C8u},
-    {0x030031D4u, 0x030033C4u},
-    {0x030033F8u, 0x03005394u},
-    {0x03005398u, 0x03005558u},
-    {0x03005568u, 0x03005790u},
-    {0x03005794u, 0x030057A4u},
-    {0x030057A8u, 0x030057F8u},
-    {0x0300580Cu, 0x03005840u},
-    {0x03005844u, 0x03005A34u},
+    {0x03000000u, 0x03002330u},
+    {0x03002DF0u, 0x03005808u},
+    {0x0300580Cu, 0x03005A4Cu},
 };
 inline constexpr const char* k_part2_gate_sha256 =
-    "9841e1498aaf1a46ebe83a5a402ce959e7dabc5d023fca8bcd34100d42b9b30b";
+    "32ef81d1e31c80b65f21f00f420e675d0453dad81782718e488544ed7f39c640";
+inline constexpr const char* k_part2_prefilter_sha256 =
+    "c158d8bcf4584efb53aae54f5d922922feb52e293f22adb1325b679dbf3b2ba7";
 
 // Code runs from the decomp mapping symbols (test classification only).
 inline constexpr CodeRun k_part3_code[] = {
@@ -331,6 +194,8 @@ inline constexpr CodeRun k_part3_gate[] = {
 };
 inline constexpr const char* k_part3_gate_sha256 =
     "c9978bfe63c71e714f5b95c1324abcbddfd1a613a74a44c84f158438f421c3d9";
+inline constexpr const char* k_part3_prefilter_sha256 =
+    "aa442c34ad7c662a71f6ad79f25568a29a5fee6e3a9aad5c1c58d9d78a9192a5";
 
 // Code runs from the decomp mapping symbols (test classification only).
 inline constexpr CodeRun k_part4_code[] = {
@@ -341,6 +206,8 @@ inline constexpr CodeRun k_part4_gate[] = {
 };
 inline constexpr const char* k_part4_gate_sha256 =
     "201cd71270e85933f208ae434bb0a446d3e5b75471da7a120dcf349ef2779f31";
+inline constexpr const char* k_part4_prefilter_sha256 =
+    "1bb94fd72743f1c8e56f79a60f1f4c9551aa48bd1dbdcf92a4e0fafc1fa4effa";
 
 // Code runs from the decomp mapping symbols (test classification only).
 inline constexpr CodeRun k_part5_code[] = {
@@ -371,6 +238,8 @@ inline constexpr CodeRun k_part5_gate[] = {
 };
 inline constexpr const char* k_part5_gate_sha256 =
     "027930d0edc399cc93acce1a21e15be36e34a69b51ceb803686d2ad6c580fee0";
+inline constexpr const char* k_part5_prefilter_sha256 =
+    "45af7b58884aed31408e868c4ed9c92d0b79bebb3ce046657953a3d59d35fa8c";
 
 // Code runs from the decomp mapping symbols (test classification only).
 inline constexpr CodeRun k_part6_code[] = {
@@ -404,5 +273,7 @@ inline constexpr CodeRun k_part6_gate[] = {
 };
 inline constexpr const char* k_part6_gate_sha256 =
     "d3c8c872d123dea0cc39c304a959547257351eb2687d9c1c9b85d5d422938514";
+inline constexpr const char* k_part6_prefilter_sha256 =
+    "dc5187899bb9d7078fc60f534806e9126142f9814c79e697167b0aefeefd6e93";
 
 }  // namespace mzm_nes_emulator
