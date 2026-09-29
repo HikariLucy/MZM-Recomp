@@ -11,7 +11,9 @@
 #include <cstdlib>
 #include <iterator>
 
+#include "gba_bus.h"
 #include "runtime_arm.h"
+#include "runtime_bus_bridge.h"
 #include "recompiled.h"
 
 namespace {
@@ -113,8 +115,29 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
         const auto& spec = mzm_nes_emulator::spec_of(emu_kind);
         auto& st = g_stats.nes_part[static_cast<std::size_t>(emu_kind)];
         ++st.attempts;
-        const bool verified = mzm_nes_emulator::verify_image(
-            spec, [](std::uint32_t a) { return bus_read_u8(a); });
+        // Fast path: live bytes identical to a previously SHA-verified copy.
+        static std::vector<std::uint8_t> snapshots[mzm_nes_emulator::kNumParts];
+        auto& snapshot = snapshots[static_cast<std::size_t>(emu_kind)];
+        const std::uint8_t* live = nullptr;
+        if (auto* bus = gbarecomp::active_bus()) {
+            switch (spec.start >> 24) {
+                case 0x02: live = bus->ewram_ptr() + (spec.start & 0x3FFFFu); break;
+                case 0x03: live = bus->iwram_ptr() + (spec.start & 0x7FFFu); break;
+                case 0x06: live = bus->vram_ptr() + (spec.start - 0x06000000u); break;
+                default: break;
+            }
+        }
+        bool verified = live && mzm_nes_emulator::matches_snapshot(spec, live, snapshot);
+        if (!verified) {
+            verified = mzm_nes_emulator::verify_image(
+                spec, [](std::uint32_t a) { return bus_read_u8(a); });
+            snapshot.clear();
+            if (verified) {
+                for (std::size_t r = 0; r < spec.gate_count; ++r)
+                    for (std::uint32_t a = spec.gate[r].start; a < spec.gate[r].end; ++a)
+                        snapshot.push_back(bus_read_u8(a));
+            }
+        }
         if (!verified) {
             ++st.verify_failures;
             if (g_stats.trace) {
@@ -150,7 +173,24 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
                                  static_cast<unsigned long long>(st.matches));
                     std::fflush(stderr);
                 }
-                if (runtime_invoke_private_entry(pc, thumb)) return 1;
+                // Explicit image identity: the verified Part selects the body.
+                // The unscoped API would reach primary-world entries only.
+                static int handles[mzm_nes_emulator::kNumParts];
+                static bool handles_ready = false;
+                if (!handles_ready) {
+                    for (std::size_t i = 0; i < mzm_nes_emulator::kNumParts; ++i) {
+                        char id[16];
+                        std::snprintf(id, sizeof(id), "nes_%s",
+                                      mzm_nes_emulator::kParts[i].name);
+                        handles[i] = runtime_private_image_handle(id);
+                    }
+                    handles_ready = true;
+                }
+                const int handle = handles[static_cast<std::size_t>(emu_kind)];
+                if (handle > 0 &&
+                    runtime_invoke_private_entry_in_image(handle, pc, thumb)) {
+                    return 1;
+                }
                 --st.matches;
                 ++st.invoke_failures;
                 reason = "no_private_entry";

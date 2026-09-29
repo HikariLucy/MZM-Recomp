@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "mzm_nes_emulator_map.h"
@@ -42,24 +43,29 @@ struct ImageSpec {
     const CodeRun* gate;
     std::size_t gate_count;
     const char* gate_sha256;
-    // False when no AOT corpus exists for this Part (Part 2: blocked, see
-    // docs/M4-NES-METROID.md). Such a Part is only *identified*, never run.
+    // SHA-256 of the first kPrefilterBytes gated bytes: a cheap first stage so
+    // a PC that merely lies in the Part's address range (Part 2 aliases MZM's
+    // own IWRAM code) does not pay a full-image hash.
+    const char* prefilter_sha256;
+    // False when no AOT corpus exists for this Part. Such a Part is only
+    // *identified*, never run.
     bool has_corpus;
-    // Only classify this Part when a frontier observer is installed. Part 2's
-    // range aliases MZM's own IWRAM code, which must not pay a hash per call.
+    // Only classify this Part when a frontier observer is installed.
     bool observer_only;
 };
+constexpr std::size_t kPrefilterBytes = 32;
 
 #define MZM_NES_PART(kind, name, start, size, has_corpus, observer_only)     \
     ImageSpec{ImageKind::kind, #name, start, size,                           \
               mzm_nes_emulator::k_##name##_gate,                             \
               sizeof(mzm_nes_emulator::k_##name##_gate) / sizeof(CodeRun),   \
-              mzm_nes_emulator::k_##name##_gate_sha256, has_corpus,          \
+              mzm_nes_emulator::k_##name##_gate_sha256,                      \
+              mzm_nes_emulator::k_##name##_prefilter_sha256, has_corpus,     \
               observer_only}
 
 inline const ImageSpec kParts[kNumParts] = {
     MZM_NES_PART(Part1, part1, 0x06006000u, 0x1240u, true, false),
-    MZM_NES_PART(Part2, part2, 0x03000000u, 0x5A4Cu, false, true),
+    MZM_NES_PART(Part2, part2, 0x03000000u, 0x5A4Cu, true, false),
     MZM_NES_PART(Part3, part3, 0x0600B000u, 0x150u, true, false),
     MZM_NES_PART(Part4, part4, 0x0600C000u, 0x60u, true, false),
     MZM_NES_PART(Part5, part5, 0x0600E000u, 0xD88u, true, false),
@@ -105,6 +111,18 @@ inline std::size_t code_run_count(ImageKind kind) {
 
 template <typename ReadByte>
 bool verify_image(const ImageSpec& spec, ReadByte read_byte) {
+    // Stage 1: the first kPrefilterBytes gated bytes.
+    {
+        std::vector<std::uint8_t> head;
+        for (std::size_t r = 0; r < spec.gate_count && head.size() < kPrefilterBytes; ++r)
+            for (std::uint32_t a = spec.gate[r].start;
+                 a < spec.gate[r].end && head.size() < kPrefilterBytes; ++a)
+                head.push_back(read_byte(a));
+        if (mzm_nes_payload::sha256_hex(head.data(), head.size()) !=
+            spec.prefilter_sha256)
+            return false;
+    }
+    // Stage 2: the complete gate.
     std::vector<std::uint8_t> buffer;
     for (std::size_t r = 0; r < spec.gate_count; ++r) {
         for (std::uint32_t a = spec.gate[r].start; a < spec.gate[r].end; ++a) {
@@ -113,6 +131,26 @@ bool verify_image(const ImageSpec& spec, ReadByte read_byte) {
     }
     return mzm_nes_payload::sha256_hex(buffer.data(), buffer.size()) ==
            spec.gate_sha256;
+}
+
+// Verified-copy fast path. `snapshot` holds the gate bytes of an image that was
+// previously accepted by verify_image() (the full SHA-256 gate). A later entry
+// whose live bytes are identical to that snapshot is, by transitivity, the
+// same ROM-derived image; any difference falls back to the full gate. This is
+// not a latch: every entry re-compares the live bytes.
+inline bool matches_snapshot(const ImageSpec& spec, const std::uint8_t* live_base,
+                             const std::vector<std::uint8_t>& snapshot) {
+    if (snapshot.empty()) return false;
+    std::size_t off = 0;
+    for (std::size_t r = 0; r < spec.gate_count; ++r) {
+        const std::size_t n = spec.gate[r].end - spec.gate[r].start;
+        if (off + n > snapshot.size() ||
+            std::memcmp(live_base + (spec.gate[r].start - spec.start),
+                        snapshot.data() + off, n) != 0)
+            return false;
+        off += n;
+    }
+    return off == snapshot.size();
 }
 
 }  // namespace mzm_nes_emulator
