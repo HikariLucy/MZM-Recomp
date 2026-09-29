@@ -1,6 +1,7 @@
 #include "mzm_ram_dispatch.h"
 #include "mzm_haze_resolver.h"
 #include "mzm_chozodia_resolver.h"
+#include "mzm_nes_payload_resolver.h"
 #include "mzm_milestone_probe.h"
 
 #include <cstddef>
@@ -50,6 +51,9 @@ struct DispatchStats {
     std::uint64_t haze_matches = 0;
     std::uint64_t chozodia_attempts = 0;
     std::uint64_t chozodia_matches = 0;
+    std::uint64_t nes_attempts = 0;
+    std::uint64_t nes_matches = 0;
+    std::uint64_t nes_frontier_hits = 0;
     std::uint64_t variant_hits[mzm_haze::kTemplates.size()] = {};
     bool trace = false;
     bool capture_requested = false;
@@ -73,9 +77,49 @@ bool guest_bytes_match(std::uint32_t runtime_pc,
     return true;
 }
 
+static bool s_nes_payload_verified = false;
+
 int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
     ++g_stats.hook_calls;
     if (!thumb) {
+        if (pc == 0x06006558u) {
+            ++g_stats.nes_frontier_hits;
+            if (g_stats.trace) {
+                std::fprintf(stderr,
+                             "mzm_ram_dispatch kind=nes_frontier "
+                             "runtime_pc=0x%08x match=1 native=0 hits=%llu\n", pc,
+                             static_cast<unsigned long long>(g_stats.nes_frontier_hits));
+                std::fflush(stderr);
+            }
+            return 1; // Controlled expected post-payload frontier
+        }
+        if (pc >= mzm_nes_payload::kRuntimeStart &&
+            pc < mzm_nes_payload::kRuntimeStart + mzm_nes_payload::kPayloadSize) {
+            ++g_stats.nes_attempts;
+            bool identified = false;
+            if (pc == mzm_nes_payload::kRuntimeStart) {
+                identified = mzm_nes_payload::identify(pc, false, [](std::uint32_t addr) {
+                    return bus_read_u8(addr);
+                });
+                s_nes_payload_verified = identified;
+            } else {
+                identified = s_nes_payload_verified;
+            }
+            if (!identified) {
+                return 0;
+            }
+            const int invoked = runtime_invoke_private_entry(pc, thumb);
+            if (!invoked) {
+                return 0;
+            }
+            if (++g_stats.nes_matches == 1 && g_stats.trace) {
+                std::fprintf(stderr,
+                             "mzm_ram_dispatch kind=nes_payload "
+                             "runtime_pc=0x%08x match=1 native=1 hits=1\n", pc);
+                std::fflush(stderr);
+            }
+            return 1;
+        }
         return 0;
     }
 
@@ -158,6 +202,7 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
 
 void mzm_install_ram_dispatch_hook() {
     g_stats = {};
+    s_nes_payload_verified = false;
     g_stats.trace = env_enabled("MZM_TRACE_RAM_DISPATCH");
     g_stats.disable_haze = env_enabled("MZM_DISABLE_HAZE_RAM_DISPATCH");
     const char* capture = std::getenv("MZM_M4_CAPTURE_FIRST_HAZE");
@@ -171,18 +216,31 @@ void mzm_chozodia_dispatch_counts(std::uint64_t& attempts,
     matches = g_stats.chozodia_matches;
 }
 
+void mzm_nes_payload_dispatch_counts(std::uint64_t& attempts,
+                                     std::uint64_t& matches) {
+    attempts = g_stats.nes_attempts;
+    matches = g_stats.nes_matches;
+}
+
+std::uint64_t mzm_nes_payload_frontier_hits() {
+    return g_stats.nes_frontier_hits;
+}
+
 void mzm_report_ram_dispatch() {
     if (!g_stats.trace && !g_stats.capture_requested && !g_stats.disable_haze) {
         return;
     }
     std::fprintf(stderr,
                  "mzm_ram_dispatch_summary hook_calls=%llu haze_attempts=%llu "
-                 "haze_matches=%llu chozodia_attempts=%llu chozodia_matches=%llu",
+                 "haze_matches=%llu chozodia_attempts=%llu chozodia_matches=%llu "
+                 "nes_attempts=%llu nes_matches=%llu",
                  static_cast<unsigned long long>(g_stats.hook_calls),
                  static_cast<unsigned long long>(g_stats.haze_attempts),
                  static_cast<unsigned long long>(g_stats.haze_matches),
                  static_cast<unsigned long long>(g_stats.chozodia_attempts),
-                 static_cast<unsigned long long>(g_stats.chozodia_matches));
+                 static_cast<unsigned long long>(g_stats.chozodia_matches),
+                 static_cast<unsigned long long>(g_stats.nes_attempts),
+                 static_cast<unsigned long long>(g_stats.nes_matches));
     for (std::size_t i = 0; i < mzm_haze::kTemplates.size(); ++i) {
         std::fprintf(stderr, " %s=%llu", mzm_haze::kTemplates[i].name,
                      static_cast<unsigned long long>(g_stats.variant_hits[i]));

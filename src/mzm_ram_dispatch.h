@@ -14,3 +14,9 @@ void mzm_report_ram_dispatch();
 // Test/diagnostic counters for the Chozodia byte gate.
 void mzm_chozodia_dispatch_counts(std::uint64_t& attempts,
                                   std::uint64_t& matches);
+
+// Test/diagnostic counters for the NES payload byte gate and post-payload frontier.
+void mzm_nes_payload_dispatch_counts(std::uint64_t& attempts,
+                                     std::uint64_t& matches);
+std::uint64_t mzm_nes_payload_frontier_hits();
+
