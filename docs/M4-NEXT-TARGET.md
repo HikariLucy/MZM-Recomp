@@ -1,25 +1,22 @@
-# M4 next target: executable RAM haze variants
+# M4 next target: a real haze strict-static checkpoint
 
-The prefetch audit in [M4 Game Pak prefetch](M4-GAMEPAK-PREFETCH.md) found
-that `GbaBus::access_cycles()` cannot correct instruction timing by itself:
-both CPU engines embed a fixed instruction fetch cost, and no shared dynamic
-fetch seam exists. Exact queue fill, DMA contention and midstream WAITCNT
-ordering still need an independent oracle. The isolated upstream
-`mzm/gamepak-prefetch` worktree remains at dynamic WAITCNT commit `6ab52a2`
-with no prefetch implementation. The official MZM pin remains `e7728148`.
+The MZM-specific haze resolver now distinguishes all seven DMA-copied
+`hazeCode` images by comparing their full 512-byte ROM and RAM windows. Six
+variants are called from RAM, and all generated native targets exist. The
+[haze audit](M4-HAZE-RAM-CODE.md) records the decomp control flow,
+position-independence evidence and local ROM test. The current three M4
+regression cases pass but do not execute haze.
 
-**Selected next MZM compatibility target: executable RAM `hazeCode` variants.**
-The [compatibility matrix](M4-COMPATIBILITY-MATRIX.md) records this as the
-other demonstrated engine-level `BLOCKED` gap: different code bodies can
-occupy the same RAM PC, while current fixed mapping chooses one body. A
-variant-aware native dispatch qualification would advance MZM compatibility
-without asserting unverified cycle precision. Chozodia and NES Metroid remain
-later routes. No haze implementation begins in this audit.
+**Selected next qualification target:** obtain a legal local checkpoint for
+an early BG3 scene, preferably a known water or weak-acid room, and run it
+with the haze hook in strict-static mode. Record a hook hit plus zero dispatch
+misses, interpreted instructions, unmapped accesses and unhandled IO. Run the
+same checkpoint without haze handling to show the dispatch difference. If
+that succeeds, add `04_haze_ram_dispatch` to the harness with the checkpoint
+kept under ignored `.local/m4-checkpoints/`. A Power Bomb checkpoint should
+follow to test expansion→retraction replacement in the same buffer.
 
-Game Pak prefetch remains a separate timing track. Its next prerequisites are
-a shared generated/interpreter instruction-fetch seam, per-machine snapshot
-design, source-grounded event ordering tests, and a local cycle oracle such as
-NBA through `oracle/diff_cycle_nba.py`. MZM case
-`03_initialize_game_timing` now provides a repeatable strict-static route to
-the `WAITCNT=0x45B4` write for that future comparison. Passing it alone does
-not qualify Game Pak prefetch timing.
+Chozodia executable RAM remains the next distinct RAM-code target after haze
+execution is qualified. Game Pak prefetch remains a separate timing track
+waiting for a shared CPU fetch seam and an independent cycle oracle; the
+official upstream pin is unchanged. No work on the next target begins here.
