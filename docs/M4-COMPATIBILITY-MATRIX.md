@@ -48,7 +48,7 @@ Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `644ec842
 | Bosses | All main-game fights | UNVERIFIED | No recorded boss route | No | Progression/visual/audio correctness |
 | Endings | Final sequence and ending | UNVERIFIED | No recorded completion | No | Full-game claim unavailable |
 | Zero Suit | Late Zero Suit section | UNVERIFIED | No recorded route | No | Mechanics, transitions, copied code |
-| NES | Bootloader ROM execution | BLOCKED | [NES audit](M4-NES-METROID.md): first absent normal entry is data-as-code `0x087D8000`; branch to `0x087D80D4` | No | Public ROM entries and controlled strict-static probe |
+| NES | Bootloader ROM execution | BLOCKED | [NES-1a probe](M4-NES-METROID.md): exact data split rejects false BL continuation at `0x087D8004`; far-BL analysis would retain its host return frame | No | Finder/codegen non-returning transfer fix, then controlled strict-static probe |
 | NES | Payload extraction | PARTIAL | Local USA BIOS-LZ77 extraction: `0x214` bytes, SHA-256 in [NES audit](M4-NES-METROID.md) | Offline payload only | Custom emulator/ROM streams not reconstructed |
 | NES | Payload RAM execution | BLOCKED | `0x03007400` ARM has no normal/private entry; compressed source has no usable `source_addr` | No | External image input and byte gate |
 | NES | Emulator Part 1 | BLOCKED | VRAM `0x06006000..0x06007240`; no source image or dynamic VRAM hook | No | Extraction, generator VRAM relocation and dispatch |
@@ -62,7 +62,7 @@ Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `644ec842
 | NES | Audio | UNVERIFIED | Part 2 audio, DMA1 FIFO A and timers | No | NES route and audio oracle |
 | NES | Input | UNVERIFIED | Part 1/5 key and menu paths | No | Real NES input route |
 | NES | Save/password | UNVERIFIED | Part 6 SRAM `0x0E007FB0/7FD8`, password helpers, stack copies | No | Behavioral round-trip |
-| NES | Quit/reset return | UNVERIFIED | `0x0600ECFC` returns to loader `0x087D8124`, then reset SWIs | No | Full lifecycle probe |
+| NES | Quit/reset return | UNVERIFIED | `0x0600ECFC` returns to loader `0x087D8124`; isolated reset-stub generation reaches protected literals after `SVC 0` | No | Non-returning SoftReset termination, static stub proof, then lifecycle probe |
 | NES | Real gameplay | UNVERIFIED | No NES scene or checkpoint | No | All preceding gates |
 | Fusion Link | Serial/Timer3 route | UNVERIFIED | [M0.6](M0.6-HARDWARE-MATRIX.md): runtime infrastructure only | No | Protocol and peripheral qualification |
 | Europe ROM | EU region native execution | UNVERIFIED | `STATUS.md` records cartridge identity only; USA generated corpus/config | No | Region-specific generation and routes |
