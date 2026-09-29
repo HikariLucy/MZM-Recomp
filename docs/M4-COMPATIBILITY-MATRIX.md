@@ -48,18 +48,33 @@ Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `644ec842
 | Bosses | All main-game fights | UNVERIFIED | No recorded boss route | No | Progression/visual/audio correctness |
 | Endings | Final sequence and ending | UNVERIFIED | No recorded completion | No | Full-game claim unavailable |
 | Zero Suit | Late Zero Suit section | UNVERIFIED | No recorded route | No | Mechanics, transitions, copied code |
-| NES Metroid | Unlockable bundled game | UNVERIFIED | [M0](M0-FEASIBILITY.md): RAM/VRAM dynamic payload; separate high-risk target | No | Dynamic executable architecture and route |
+| NES | Bootloader ROM execution | BLOCKED | [NES audit](M4-NES-METROID.md): first absent normal entry is data-as-code `0x087D8000`; branch to `0x087D80D4` | No | Public ROM entries and controlled strict-static probe |
+| NES | Payload extraction | PARTIAL | Local USA BIOS-LZ77 extraction: `0x214` bytes, SHA-256 in [NES audit](M4-NES-METROID.md) | Offline payload only | Custom emulator/ROM streams not reconstructed |
+| NES | Payload RAM execution | BLOCKED | `0x03007400` ARM has no normal/private entry; compressed source has no usable `source_addr` | No | External image input and byte gate |
+| NES | Emulator Part 1 | BLOCKED | VRAM `0x06006000..0x06007240`; no source image or dynamic VRAM hook | No | Extraction, generator VRAM relocation and dispatch |
+| NES | Emulator Part 2 | BLOCKED | IWRAM `0x03000000..0x03005A4C`; hook range exists, compressed source absent | No | Extraction, cross-part CFG |
+| NES | Emulator Part 3 | BLOCKED | VRAM `0x0600B000..0x0600B150` | No | Extraction and dynamic VRAM dispatch |
+| NES | Emulator Part 4 | BLOCKED | VRAM `0x0600C000..0x0600C060`; initialization overlays region | No | Track active image and verify bytes |
+| NES | Emulator Part 5 | BLOCKED | VRAM `0x0600E000..0x0600ED88` | No | Extraction and dynamic VRAM dispatch |
+| NES | Emulator Part 6 | BLOCKED | EWRAM `0x0203E000..0x0203E8E0`; SRAM helpers execute stack copies | No | Extraction and stack-copy qualification |
+| NES | VRAM executable dispatch | BLOCKED | Integrated runtime RAM hook ends at `0x04000000`; private CFG/literal relocation also RAM-bound | No | Generic dynamic-executable hook and VRAM generator fixture |
+| NES | Interrupts | UNVERIFIED | IRQ references and HBlank/VBlank use in nested sources | No | Real NES IRQ route |
+| NES | Audio | UNVERIFIED | Part 2 audio, DMA1 FIFO A and timers | No | NES route and audio oracle |
+| NES | Input | UNVERIFIED | Part 1/5 key and menu paths | No | Real NES input route |
+| NES | Save/password | UNVERIFIED | Part 6 SRAM `0x0E007FB0/7FD8`, password helpers, stack copies | No | Behavioral round-trip |
+| NES | Quit/reset return | UNVERIFIED | `0x0600ECFC` returns to loader `0x087D8124`, then reset SWIs | No | Full lifecycle probe |
+| NES | Real gameplay | UNVERIFIED | No NES scene or checkpoint | No | All preceding gates |
 | Fusion Link | Serial/Timer3 route | UNVERIFIED | [M0.6](M0.6-HARDWARE-MATRIX.md): runtime infrastructure only | No | Protocol and peripheral qualification |
 | Europe ROM | EU region native execution | UNVERIFIED | `STATUS.md` records cartridge identity only; USA generated corpus/config | No | Region-specific generation and routes |
 
 ## Inventory by evidence level
 
-Current row counts: **47 total — 21 PASS, 14 PARTIAL, 1 BLOCKED, 11 UNVERIFIED**.
+Current row counts: **62 total — 21 PASS, 15 PARTIAL, 10 BLOCKED, 16 UNVERIFIED**.
 
 - **VERIFIED:** the two passive headless gates and the 1400-step `InitializeGame` execution/write gate; historical strict-static intro/title, New Game, early rooms, Save Room write, SRAM reload, the two SRAM stack helper bodies, identification of seven haze RAM images, and the Chozodia 0x40-byte RAM image. The isolated private-relocation branch also passes synthetic RAM-PC, byte-gated dispatch, nested IRQ and yield/resume tests; a local-ROM Chozodia function fixture records RAM-PC WIN0H writes.
 - **PARTIALLY VERIFIED:** host save-state/rewind mechanisms, audio, PPU excluding mosaic, IRQ, DMA, timers, fixed executable copies, indirect calls, and the MZM WAITCNT route beyond observed writes/accesses. These have fidelity or late-route gaps.
-- **UNVERIFIED:** real haze strict-static execution, Power Bomb swap, repeated Chozodia callbacks, the real Chozodia scene, bosses, endings, Zero Suit, NES Metroid, Fusion Link, and Europe execution.
-- **KNOWN GAP:** Game Pak prefetch timing remains unmodeled. Haze has byte-verified dispatch but no real-scene or IRQ/resume qualification. Chozodia native dispatch is synthetically qualified; real HBlank delivery and Escape gameplay still need a checkpoint.
+- **UNVERIFIED:** real haze strict-static execution, Power Bomb swap, repeated Chozodia callbacks, the real Chozodia scene, bosses, endings, Zero Suit, NES interrupts/audio/input/save/quit/gameplay, Fusion Link, and Europe execution.
+- **KNOWN GAP:** Game Pak prefetch timing remains unmodeled. NES ROM data-as-code loader, compressed executable image input, and VRAM private dispatch are separate unresolved gates. Haze has byte-verified dispatch but no real-scene or IRQ/resume qualification. Chozodia native dispatch is synthetically qualified; real HBlank delivery and Escape gameplay still need a checkpoint.
 
 ## Pin audit details
 
@@ -67,7 +82,7 @@ Current row counts: **47 total — 21 PASS, 14 PARTIAL, 1 BLOCKED, 11 UNVERIFIED
 
 **WAITCNT/prefetch:** The integration pin reads live WAITCNT from IO and handles SRAM/WS0/WS1/WS2, including ROM 32-bit splits and DMA cost. Case 03 reproduces the `0x45B4` write and 317 frames with VBlank yielding disabled; no NBA cycle oracle qualifies overall timing. MZM's value sets hardware bit 14 despite the decomp's `WAIT_GAMEPACK_CGB` name. The BIOS open-bus latch is unrelated to cartridge prefetch. See [M4 WAITCNT](M4-WAITCNT.md) and the [Game Pak prefetch audit](M4-GAMEPAK-PREFETCH.md).
 
-**Executable RAM:** fixed ROM→IWRAM `[[code_copy]]` mappings are supported; MZM's configured five are IRQ, sound A/B/C and clipdata. The RAM dispatch hook byte-verifies two position-independent stack-local SRAM helpers and identifies seven full 512-byte haze images at the shared RAM address before selecting native code. Chozodia now uses a separate 64-byte gate and private native table, including interior resumes. No real haze or Chozodia scene is qualified; NES Metroid's multi-region payload remains unaudited. See [M4 HAZE RAM CODE](M4-HAZE-RAM-CODE.md) and [M4 CHOZODIA RAM CODE](M4-CHOZODIA-RAM-CODE.md).
+**Executable RAM:** fixed ROM→IWRAM `[[code_copy]]` mappings are supported; MZM's configured five are IRQ, sound A/B/C and clipdata. The RAM dispatch hook byte-verifies two position-independent stack-local SRAM helpers and identifies seven full 512-byte haze images at the shared RAM address before selecting native code. Chozodia now uses a separate 64-byte gate and private native table, including interior resumes. No real haze or Chozodia scene is qualified. NES Metroid's executable subsystem is now mapped in [M4 NES METROID](M4-NES-METROID.md); its boot and external-image boundaries remain unqualified. See also [M4 HAZE RAM CODE](M4-HAZE-RAM-CODE.md) and [M4 CHOZODIA RAM CODE](M4-CHOZODIA-RAM-CODE.md).
 
 **Haze capture gate:** MZM-only opt-in trace counts hook calls, resolver attempts and matches, and records a first native variant hit. A wrapper requests a local save through upstream's existing windowed TCP observer after the generated call stack unwinds. A temporary boot-state save/load validated the capture mechanism, but `.local/m4-checkpoints/haze-bg3.state` does not exist. No case 04 or RED→GREEN scene result is claimed.
 
