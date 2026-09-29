@@ -54,10 +54,11 @@ e7728148c6829ba526f682876430a0c9022dc6c0
 M4 integration revision used by the current MZM build:
 
 ```text
-644ec842f8b2106f21fdef6ae05ae997c8e49869
+984957a4f1c70379e9ce6717c1fd080aecf7e37d
 ```
 
-This local revision combines MOSAIC, WAITCNT and private relocated entry
+This local revision combines MOSAIC, WAITCNT, private relocated entry,
+non-returning calls (`returns = false`), and terminal SoftReset control-flow
 commits on the M0 base. `CMakeLists.txt` and `scripts/generate-m1.sh` check
 the exact SHA through the supplied `GBARECOMP_ROOT`; no branch name or local
 absolute path is part of the dependency pin.

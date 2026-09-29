@@ -1,9 +1,10 @@
 # M4 private relocated native entry
 
 Date: 2026-09-29. MZM uses local GBARecomp integration revision
-`644ec842f8b2106f21fdef6ae05ae997c8e49869`, based on
+`984957a4f1c70379e9ce6717c1fd080aecf7e37d`, based on
 `e7728148c6829ba526f682876430a0c9022dc6c0`. It cherry-picks the
-MOSAIC tests/fix, WAITCNT tests/fix, and private relocation commits. The
+MOSAIC tests/fix, WAITCNT tests/fix, private relocation commits, and
+non-returning call / terminal SoftReset control-flow commits. The
 private branch ends at `5760837cce012eaa4af5320a9582bd64508cbfda`.
 No remote merge or push was performed.
 

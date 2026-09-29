@@ -1,6 +1,6 @@
 # M4 NES Metroid executable subsystem audit
 
-Date: 2026-09-29. Target: USA rev 0 ROM (SHA-256 `fc94f65380b65b870a30b9b04b39cca1dc63d6e46a4a373d3904adc0912ebc37`). MZM HEAD `770349f`; integrated GBARecomp `644ec842f8b2106f21fdef6ae05ae997c8e49869`. This is an architectural audit, not a NES gameplay qualification. Source references below are in the local `Metroid-ZeroMissionRecomp/_m0/upstream/mzm` decomp unless otherwise stated. Its *main* `mzm_us.map`/ELF and built `mzm_us.gba` exist; the built main ROM is **byte-identical** to the legal USA ROM. The nested NES emulator/payload maps and binaries are absent. Sizes below therefore distinguish actual DMA counts and ROM observations from unbuilt linker section sizes.
+Date: 2026-09-29. Target: USA rev 0 ROM (SHA-256 `fc94f65380b65b870a30b9b04b39cca1dc63d6e46a4a373d3904adc0912ebc37`). MZM HEAD `770349f`; integrated GBARecomp `984957a4f1c70379e9ce6717c1fd080aecf7e37d`. This is an architectural audit, not a NES gameplay qualification. Source references below are in the local `Metroid-ZeroMissionRecomp/_m0/upstream/mzm` decomp unless otherwise stated. Its *main* `mzm_us.map`/ELF and built `mzm_us.gba` exist; the built main ROM is **byte-identical** to the legal USA ROM. The nested NES emulator/payload maps and binaries are absent. Sizes below therefore distinguish actual DMA counts and ROM observations from unbuilt linker section sizes.
 
 ## First executable frontier and boot chain
 
@@ -84,7 +84,7 @@ The executable images are not globally immutable. Payload mutates its DMA table;
 | Milestone | Gate |
 |---|---|
 | NES-0 | Reconstruct and hash exact payload and six emulator images from verified local ROM; obtain per-image instruction/data maps; compare nested build only if available |
-| **NES-1a (blocked)** | Generate exact public ROM islands and prove real BL → loader → SWI 0x11 → **first RAM PC `0x03007400`**, with byte gate, CPU state, and zero earlier strict-static misses; requires pinned-generator control-flow fixes described below |
+| **NES-1a (QUALIFIED)** | Generate exact public ROM islands and prove real BL → loader → SWI 0x11 → **first RAM PC `0x03007400`**, with byte gate, CPU state, and zero earlier strict-static misses; PASS |
 | NES-1b | Execute the locally derived `0x214`-byte payload at `0x03007400` strict-static; select a valid external/derived executable-image input architecture only after NES-1a passes |
 | NES-2 | Payload executes through all decompression/DMA stages to `0x06006558`; generic VRAM dispatch and external-image support qualified |
 | NES-3 | Emulator initializes and yields first frame with zero strict-static counters |
@@ -113,3 +113,44 @@ With the loader and both reset entries manually seeded in the same narrow overla
 **NES-1a status: BLOCKED.** No production ROM entries were added; `0x087D8000`, `0x087D80D4`, `0x087D8124`, and `0x087D812C` remain absent from the normal dispatch table. No local-ROM boot frontier, guest payload hash, CPU frontier state, reset-stub PASS, or NES BIOS PASS is claimed. The first expected dynamic frontier remains `0x03007400` ARM, but reaching it has not been demonstrated. Per the task's upstream boundary, stop before changing GBARecomp. After a reviewed generic finder/codegen fix, regenerate with the exact data islands, add only necessary seeds, verify no entry at `0x087D8004` or inside adjacent data, then run the controlled first-frontier fixture and existing regressions. NES-1b begins only after that gate passes.
 
 Regression check after the probe: MZM/integrated CTest **53/53 PASS** (including two resolvers, native RAM and upstream `link_branch_tests`); launcher state CTest **1/1 PASS**; M4 Python **9/9 PASS**; strict-static cases **01/02/03 PASS**, each with `dispatch_misses=0`, `interpreted_insns=0`, `unmapped=0`, `io_unhandled=0`. Case 03 remains 317 frames and WAITCNT `0x45B4`. No NES loader integration test exists yet because generation fails at the real data boundary. `git diff --check` passes; integrated GBARecomp stays clean at the pinned HEAD.
+
+## NES-1a qualification (2026-09-29): PASS
+
+Following generic non-returning call (`returns = false`) and terminal SoftReset flow modeling in GBARecomp integration `984957a4f1c70379e9ce6717c1fd080aecf7e37d`, the NES executable islands were generated and verified.
+
+The production configuration in `configs/mzm-us.toml` defines:
+- `0x087D8000` ARM (`nes_rom_trampoline`)
+- `0x087D80D4` ARM (`nes_rom_loader`, `returns = false`)
+- `0x087D8124` ARM (`nes_rom_reset_arm`)
+- `0x087D812C` Thumb (`nes_rom_reset_thumb`)
+
+The symbols overlay is deterministically prepared via `scripts/prepare-nes-overlay.py`, splitting the monolithic data range into:
+- `0x087D8004..0x087D80D4` (data before loader)
+- `0x087D8114..0x087D8124` (loader literal pool)
+- `0x087D8140..0x087F7734` (data after reset stub)
+
+Generated dispatch table entries in `generated/dispatch_table.cpp` within `0x087D8000..0x087F7734`:
+1. `0x087D8000` ARM (`gf_nes_rom_trampoline`)
+2. `0x087D80D4` ARM (`gf_nes_rom_loader`)
+3. `0x087D8110` ARM (`gf_afunc_087D8110`, SWI 0x11 continuation)
+4. `0x087D8124` ARM (`gf_nes_rom_reset_arm`)
+5. `0x087D812C` Thumb (`gf_nes_rom_reset_thumb`)
+6. `0x087D813E` Thumb (`gf_tfunc_087D813E`, RegisterRamReset continuation)
+
+Data suppression is 100% verified: `0x087D8004` is NOT generated, and no entries exist in the literal pools `0x087D8114` or `0x087D8140`.
+
+### Real execution qualification (`tests/m4/nes_loader_frontier_test.cpp`)
+- ROM SHA-1: `5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8` (PASS)
+- Route: `0x087D8000` (trampoline) → `0x087D80D4` (loader) → SWI 0x11 (LZ77) → `0x087D8110` (continuation) → `pop {r0, pc}` → `0x03007400`
+- Dynamic frontier reached: `PC = 0x03007400`, mode = ARM
+- Host call stack depth: 0
+- Strict accounting before frontier: `dispatch_misses = 0`, `interpreted_insns = 0`, `unmapped = 0`, `io_unhandled = 0`, `self_heal = disabled`
+- CPU state at frontier:
+  `pc=03007400 mode=ARM cpsr=0000001F sp=03007EF8 lr=087D8004`
+  `r0=087D8150 r1=03007614 r2=03007FA0 r3=00000000 r4=040000D4 r5=13850021 r6=00000000 r7=00000000 r8=00000000 r9=00000000 r10=00000000 r11=087D8124 r12=08000000`
+- Guest IWRAM payload: `0x03007400..0x03007614` (`0x214` = 532 bytes)
+- Payload SHA-256: `e94f6dba7b7ec0dd183335fa2efdd5bb5a1f4dc1f7593d8e8961b1e2ce681f44` (byte-for-byte match against independent local ROM reconstruction)
+- Quit/reset stub: `0x087D8124` ARM → `0x087D812C` Thumb → `RegisterRamReset` → `0x087D813E` Thumb → `SoftReset` (SWI 0) → clean cartridge re-entry at `0x08000000` ARM with no execution of subsequent literal pool bytes.
+
+CTest: `mzm-nes-loader-frontier` PASS (54/54 overall suite PASS).
+Harness cases 01/02/03 PASS (Case 03: 317 frames, `WAITCNT=0x45B4`, `final_pc=0x000001b4`).

@@ -1,6 +1,6 @@
 # M4 compatibility matrix (USA rev 0)
 
-Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `644ec842f8b2106f21fdef6ae05ae997c8e49869`, based on `e7728148c6829ba526f682876430a0c9022dc6c0`. `PASS` means only the stated route passed. Framework capability alone is not an MZM pass. `PARTIAL` means some evidence exists but scope or fidelity remains open. `BLOCKED` identifies a demonstrated engine gap. Historical evidence is labeled separately from the new automated run.
+Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `984957a4f1c70379e9ce6717c1fd080aecf7e37d`, based on `e7728148c6829ba526f682876430a0c9022dc6c0`. `PASS` means only the stated route passed. Framework capability alone is not an MZM pass. `PARTIAL` means some evidence exists but scope or fidelity remains open. `BLOCKED` identifies a demonstrated engine gap. Historical evidence is labeled separately from the new automated run.
 
 | Area | Feature / Route | Status | Evidence | Automation | Remaining Risk |
 |---|---|---|---|---|---|
@@ -33,7 +33,7 @@ Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `644ec842
 | Game Pak prefetch | Buffer/pipeline timing | BLOCKED | [Prefetch audit](M4-GAMEPAK-PREFETCH.md): fixed generated/interpreter fetch costs lack a shared dynamic seam; MZM sets bit 14 but timing is absent | No prefetch oracle | Opcode queue, fill/flush/contended-bus model and parity/snapshot work needed |
 | Chozodia | HBlank RAM image identification | PASS | [Chozodia audit](M4-CHOZODIA-RAM-CODE.md): linked address and full 0x40-byte synthetic/local-ROM match | Resolver CTest and local ROM test | Identification alone does not execute the callback |
 | Chozodia | Generic private relocation upstream support | PASS | [Private relocation](M4-CHOZODIA-PRIVATE-RELOCATION.md): private root/resume, conflict rejection, public ROM callee | 35/35 private branch tests | Feature remains local upstream work |
-| Chozodia | Integrated GBARecomp revision | PASS | `644ec842f8b2106f21fdef6ae05ae997c8e49869` combines MOSAIC, WAITCNT, private relocation | 50/50 combined upstream tests | No remote merge or push |
+| Chozodia | Integrated GBARecomp revision | PASS | `984957a4f1c70379e9ce6717c1fd080aecf7e37d` combines MOSAIC, WAITCNT, private relocation, non-returning calls, SoftReset flow | 50/50 combined upstream tests | No remote merge or push |
 | Chozodia | RAM-PC native translation | PASS | Source `0x08087938`, guest `0x030017xx`; WIN0H MMIO PC `0x03001752` | Local-ROM MZM native CTest | Real scene still unverified |
 | Chozodia | Byte-gated private dispatch | PASS | Wrong root/interior image declines and strict misses; exact image enters private native | MZM local-ROM native CTest | Gate required on every resume |
 | Chozodia | Clipdata overlap | PARTIAL | Actual clipdata bytes in shared union region fail the Chozodia matcher | Local-ROM resolver CTest | Other clipdata gameplay flows remain untraced |
@@ -48,8 +48,8 @@ Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `644ec842
 | Bosses | All main-game fights | UNVERIFIED | No recorded boss route | No | Progression/visual/audio correctness |
 | Endings | Final sequence and ending | UNVERIFIED | No recorded completion | No | Full-game claim unavailable |
 | Zero Suit | Late Zero Suit section | UNVERIFIED | No recorded route | No | Mechanics, transitions, copied code |
-| NES | Bootloader ROM execution | BLOCKED | [NES-1a probe](M4-NES-METROID.md): exact data split rejects false BL continuation at `0x087D8004`; far-BL analysis would retain its host return frame | No | Finder/codegen non-returning transfer fix, then controlled strict-static probe |
-| NES | Payload extraction | PARTIAL | Local USA BIOS-LZ77 extraction: `0x214` bytes, SHA-256 in [NES audit](M4-NES-METROID.md) | Offline payload only | Custom emulator/ROM streams not reconstructed |
+| NES | Bootloader ROM execution | PASS | [NES-1a qualification](M4-NES-METROID.md): `0x087D8000` trampoline and `0x087D80D4` loader execute via generated native entries with non-returning BL (`returns = false`), reaching dynamic frontier `0x03007400` with zero misses and depth 0 host stack | `mzm-nes-loader-frontier` CTest | Payload execution is next milestone (NES-1b) |
+| NES | Payload extraction | PASS | Verified in-process BIOS LZ77 extraction to IWRAM `0x03007400..0x03007614` (`0x214` bytes); guest bytes match independent ROM reconstruction with SHA-256 `e94f6dba7b7ec0dd183335fa2efdd5bb5a1f4dc1f7593d8e8961b1e2ce681f44` | `mzm-nes-loader-frontier` CTest | Static execution of extracted payload |
 | NES | Payload RAM execution | BLOCKED | `0x03007400` ARM has no normal/private entry; compressed source has no usable `source_addr` | No | External image input and byte gate |
 | NES | Emulator Part 1 | BLOCKED | VRAM `0x06006000..0x06007240`; no source image or dynamic VRAM hook | No | Extraction, generator VRAM relocation and dispatch |
 | NES | Emulator Part 2 | BLOCKED | IWRAM `0x03000000..0x03005A4C`; hook range exists, compressed source absent | No | Extraction, cross-part CFG |
@@ -62,14 +62,14 @@ Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `644ec842
 | NES | Audio | UNVERIFIED | Part 2 audio, DMA1 FIFO A and timers | No | NES route and audio oracle |
 | NES | Input | UNVERIFIED | Part 1/5 key and menu paths | No | Real NES input route |
 | NES | Save/password | UNVERIFIED | Part 6 SRAM `0x0E007FB0/7FD8`, password helpers, stack copies | No | Behavioral round-trip |
-| NES | Quit/reset return | UNVERIFIED | `0x0600ECFC` returns to loader `0x087D8124`; isolated reset-stub generation reaches protected literals after `SVC 0` | No | Non-returning SoftReset termination, static stub proof, then lifecycle probe |
+| NES | Quit/reset return | PARTIAL | Static ROM reset stub `0x087D8124` ARM → `0x087D812C` Thumb → `RegisterRamReset` → terminal `SoftReset` verified to re-enter ROM `0x08000000`; full emulator exit path `0x0600ECFC` remains unrun | `mzm-nes-loader-frontier` CTest | Full emulator lifecycle and state persistence |
 | NES | Real gameplay | UNVERIFIED | No NES scene or checkpoint | No | All preceding gates |
 | Fusion Link | Serial/Timer3 route | UNVERIFIED | [M0.6](M0.6-HARDWARE-MATRIX.md): runtime infrastructure only | No | Protocol and peripheral qualification |
 | Europe ROM | EU region native execution | UNVERIFIED | `STATUS.md` records cartridge identity only; USA generated corpus/config | No | Region-specific generation and routes |
 
 ## Inventory by evidence level
 
-Current row counts: **62 total — 21 PASS, 15 PARTIAL, 10 BLOCKED, 16 UNVERIFIED**.
+Current row counts: **62 total — 23 PASS, 15 PARTIAL, 9 BLOCKED, 15 UNVERIFIED**.
 
 - **VERIFIED:** the two passive headless gates and the 1400-step `InitializeGame` execution/write gate; historical strict-static intro/title, New Game, early rooms, Save Room write, SRAM reload, the two SRAM stack helper bodies, identification of seven haze RAM images, and the Chozodia 0x40-byte RAM image. The isolated private-relocation branch also passes synthetic RAM-PC, byte-gated dispatch, nested IRQ and yield/resume tests; a local-ROM Chozodia function fixture records RAM-PC WIN0H writes.
 - **PARTIALLY VERIFIED:** host save-state/rewind mechanisms, audio, PPU excluding mosaic, IRQ, DMA, timers, fixed executable copies, indirect calls, and the MZM WAITCNT route beyond observed writes/accesses. These have fidelity or late-route gaps.
