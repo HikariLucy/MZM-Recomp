@@ -6,6 +6,7 @@ Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used b
 |---|---|---|---|---|---|
 | Boot | USA cold boot, one headless frame | PASS | New `01_boot_headless`: strict-static, zero counters | `tests/m4/cases.toml` | Later boot behavior outside one frame |
 | Boot | 120 passive headless frames | PASS | New `02_static_120_frames`: 120 PPU frames, zero counters | `tests/m4/cases.toml` | Does not reach title |
+| Boot | 1400-step `InitializeGame` timing probe | PASS | New `03_initialize_game_timing`: `0x45B4` write, stable PC/frame/cycle counts over three direct runs; zero strict-static counters | `tests/m4/cases.toml` observes MMIO write | Execution gate only; no cycle oracle |
 | Intro | IntroHandler reached | PASS | [M2B](evidence/M2B-STRICT-TITLE.md): 97 hits in strict-static session | No input replay case yet | Long route still manual |
 | Title | TitleScreenHandler reached | PASS | [M2B](evidence/M2B-STRICT-TITLE.md): 140 hits | No | Menu fidelity not compared |
 | New game | Selected in qualified route | PASS | [M3](evidence/M3-STRICT-GAMEPLAY.md): operator route, zero static misses | No | Inputs not recorded |
@@ -26,7 +27,7 @@ Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used b
 | Mosaic | BG/OBJ native rendering in local upstream branch; MZM scene | PARTIAL | Pin lacks it; local `mzm/ppu-mosaic` passes 14 synthetic cases and upstream 48/48; no MZM scene | Synthetic CTest; MZM passive cases `UNCHANGED` | Official pin remains unpatched; real scene and extended-view margin not qualified |
 | WAITCNT | Dynamic Game Pak/SRAM waitstates in isolated upstream branch | PASS | [M4 WAITCNT](M4-WAITCNT.md): corrected RED 135 failures → 35/35 upstream GREEN; pin unchanged | Synthetic `waitcnt_tests` | Full hardware timing still unqualified |
 | WAITCNT | MZM programmed-value timing route | PARTIAL | `0x45B4` write and live WS0 5/3→4/2 observed in 1400-step probe; passive cases unchanged | Local MMIO dump and temporary bus probe | Full SRAM route and NBA cycle oracle not run |
-| Game Pak prefetch | Buffer/pipeline timing | BLOCKED | MZM sets hardware bit 14; register stores it, but buffer timing is absent | No prefetch oracle | Opcode buffer/fill/invalidation model needed |
+| Game Pak prefetch | Buffer/pipeline timing | BLOCKED | [Prefetch audit](M4-GAMEPAK-PREFETCH.md): fixed generated/interpreter fetch costs lack a shared dynamic seam; MZM sets bit 14 but timing is absent | No prefetch oracle | Opcode queue, fill/flush/contended-bus model and parity/snapshot work needed |
 | Chozodia | Escape HBlank RAM callback | UNVERIFIED | [M0.6](M0.6-HARDWARE-MATRIX.md) identifies 0x40-byte copy; absent from five configured mappings | No | Late route and mapping qualification |
 | Bosses | All main-game fights | UNVERIFIED | No recorded boss route | No | Progression/visual/audio correctness |
 | Endings | Final sequence and ending | UNVERIFIED | No recorded completion | No | Full-game claim unavailable |
@@ -37,9 +38,9 @@ Audit date: 2026-09-28. Main base: `c70b039`. GBARecomp checkout actually used b
 
 ## Inventory by evidence level
 
-Current row counts: **30 total — 10 PASS, 11 PARTIAL, 2 BLOCKED, 7 UNVERIFIED**.
+Current row counts: **31 total — 11 PASS, 11 PARTIAL, 2 BLOCKED, 7 UNVERIFIED**.
 
-- **VERIFIED:** the two new passive headless gates; historical strict-static intro/title, New Game, early rooms, Save Room write, SRAM reload, and the two SRAM stack helper bodies.
+- **VERIFIED:** the two passive headless gates and the 1400-step `InitializeGame` execution/write gate; historical strict-static intro/title, New Game, early rooms, Save Room write, SRAM reload, and the two SRAM stack helper bodies.
 - **PARTIALLY VERIFIED:** host save-state/rewind mechanisms, audio, PPU excluding mosaic, IRQ, DMA, timers, fixed executable copies, indirect calls, and the MZM WAITCNT route beyond observed writes/accesses. These have fidelity or late-route gaps.
 - **UNVERIFIED:** Chozodia, bosses, endings, Zero Suit, NES Metroid, Fusion Link, and Europe execution.
 - **KNOWN GAP:** the official GBARecomp pin still lacks BG/OBJ mosaic and dynamic WAITCNT waitstates (both corrected only in separate local branches); mutable same-PC haze code lacks variant-aware native dispatch; Game Pak prefetch timing remains unmodeled.
@@ -48,7 +49,7 @@ Current row counts: **30 total — 10 PASS, 11 PARTIAL, 2 BLOCKED, 7 UNVERIFIED*
 
 **Mosaic:** The official `e7728148` pin reads no MOSAIC register or enable bits for rendering. The isolated local `mzm/ppu-mosaic` branch implements native BG/OBJ/OBJ-window sampling; 14 synthetic cases and 48/48 upstream tests pass. A patched MZM build passes both passive strict-static cases and compares `UNCHANGED` with the pin. The decomp contains register writes but no proven nonzero size plus layer enable; `SPRITE_STATUS_MOSAIC` is an affine matrix selector, not the hardware OAM bit. No MZM scene has been captured. See [M4 PPU MOSAIC](M4-PPU-MOSAIC.md).
 
-**WAITCNT/prefetch:** The pin's `access_cycles` is still static. The independent `mzm/waitcnt-timing` branch reads live WAITCNT from IO and handles SRAM/WS0/WS1/WS2, including ROM 32-bit splits and DMA cost. Generic tests and an MZM write/access probe qualify the dynamic part; no NBA cycle oracle qualifies overall timing. MZM's `0x45B4` sets hardware prefetch bit 14 despite the decomp's `WAIT_GAMEPACK_CGB` name. The BIOS open-bus latch is unrelated to cartridge prefetch. See [M4 WAITCNT](M4-WAITCNT.md).
+**WAITCNT/prefetch:** The pin's `access_cycles` is still static. The independent `mzm/waitcnt-timing` branch reads live WAITCNT from IO and handles SRAM/WS0/WS1/WS2, including ROM 32-bit splits and DMA cost. Generic tests and an MZM write/access probe qualify the dynamic part; no NBA cycle oracle qualifies overall timing. The new case 03 makes the `0x45B4` write reproducible with VBlank yielding disabled, but is not a prefetch timing oracle. MZM's value sets hardware bit 14 despite the decomp's `WAIT_GAMEPACK_CGB` name. The BIOS open-bus latch is unrelated to cartridge prefetch. See [M4 WAITCNT](M4-WAITCNT.md) and the [Game Pak prefetch audit](M4-GAMEPAK-PREFETCH.md).
 
 **Executable RAM:** fixed ROM→IWRAM `[[code_copy]]` mappings are supported; MZM's configured five are IRQ, sound A/B/C and clipdata. The RAM dispatch hook in `src/mzm_ram_dispatch.cpp` byte-verifies two position-independent stack-local SRAM helpers and calls their generated native bodies; early strict-static/save evidence qualifies those helper routes. A fixed runtime-PC→one-source mapping cannot select all `hazeCode` variants. Chozodia's HBlank copy and NES Metroid's multi-region payload are identified but unqualified in MZM. Framework infrastructure is not proof those routes run.
 
@@ -63,7 +64,7 @@ scripts/run-m4-regression.sh --bin build-m1/MZMRecomp
 python3 scripts/compare-m4-regression.py baseline/summary.json candidate/summary.json
 ```
 
-`--rom` and `--bios` can replace the environment variables. The runner reads `tests/m4/cases.toml`; each case declares a USA ROM target, BIOS requirement, config, exactly one positive `frames` or `steps` limit, optional `checkpoint`/`load_state` name, expectations (`final_pc` and `ppu_frames` only when stable), and expected artifacts (`final.png` currently). `--cases`, `--output`, `--timeout`, `--config`, and `--checkpoint` are available. The runtime receives `GBARECOMP_STRICT_STATIC=1`; an unmet expected counter, artifact, exit code, or timeout fails the run. The runner stores its own SRAM per case under ignored `dist/m4-regression/<UTC timestamp>/artifacts/`, so it does not alter the ROM-adjacent save.
+`--rom` and `--bios` can replace the environment variables. The runner reads `tests/m4/cases.toml`; each case declares a USA ROM target, BIOS requirement, config, exactly one positive `frames` or `steps` limit, optional `checkpoint`/`load_state` name, expectations (`final_pc` and `ppu_frames` only when stable), and expected artifacts (`final.png` currently). Case 03 sets `vblank_yield = false` and `waitcnt_write = 0x45B4`, which requires the value in a local MMIO trace. The summary also records guest `cycles`; it does not compare their direction as a pass/fail signal. `--cases`, `--output`, `--timeout`, `--config`, and `--checkpoint` are available. The runtime receives `GBARECOMP_STRICT_STATIC=1`; an unmet expected counter, artifact, exit code, or timeout fails the run. The runner stores its own SRAM per case under ignored `dist/m4-regression/<UTC timestamp>/artifacts/`, so it does not alter the ROM-adjacent save.
 
 Each run writes `summary.txt`, `summary.json`, `logs/<case>.log`, and `artifacts/<case>/`. The JSON stores metrics and relative case names without private absolute paths. Logs and artifacts remain local and ignored; runtime diagnostics may contain local paths and game-derived content, so review them before sharing. The comparison reports `REGRESSION`, `UNCHANGED`, `IMPROVED`, or `NOT COMPARABLE` per case. It compares exit/case status and the four strict-static error counters. It compares `final_pc` only when the case declares an expected stable value.
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run declarative MZM strict-static cases against a local native executable."""
 import argparse
+import csv
 from datetime import datetime, timezone
 import json
 import os
@@ -12,8 +13,8 @@ import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
-FIELDS = ("cpu_backend", "strict_static", "dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "final_pc", "ppu_frames", "steps")
-COUNTERS = {"dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "ppu_frames", "steps"}
+FIELDS = ("cpu_backend", "strict_static", "dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "final_pc", "ppu_frames", "steps", "cycles")
+COUNTERS = {"dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "ppu_frames", "steps", "cycles"}
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 
@@ -25,6 +26,18 @@ def read_metrics(log):
             value = hits[-1]
             values[key] = int(value) if key in COUNTERS and value.isdecimal() else value
     return values
+
+
+def saw_waitcnt_write(path, expected):
+    if not path.is_file():
+        return False
+    with path.open(newline="") as stream:
+        for entry in csv.DictReader(stream):
+            if (int(entry["addr"], 0) == 0x04000204
+                    and int(entry["size"]) == 2
+                    and int(entry["value"], 0) == expected):
+                return True
+    return False
 
 
 def run_case(case, args, output):
@@ -52,6 +65,12 @@ def run_case(case, args, output):
     log_path = output / "logs" / (name + ".log")
     artifact_dir = output / "artifacts" / name
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    vblank_yield = case.get("vblank_yield", True)
+    if not isinstance(vblank_yield, bool):
+        raise ValueError(f"{name}: vblank_yield must be boolean")
+    waitcnt_write = case.get("waitcnt_write")
+    if waitcnt_write is not None and (type(waitcnt_write) is not int or not 0 <= waitcnt_write <= 0xFFFF):
+        raise ValueError(f"{name}: waitcnt_write must be a halfword")
     row = {"case": name, "status": "FAIL", "exit_code": None, "duration": 0.0, "stable_final_pc": "final_pc" in case.get("expect", {})}
     if state and not state.is_file():
         log_path.write_text("checkpoint unavailable; no game process started\n")
@@ -66,6 +85,10 @@ def run_case(case, args, output):
         command.extend(("--dump-png", str(artifact_dir / item)))
     env = os.environ.copy()
     env["GBARECOMP_STRICT_STATIC"] = "1"
+    if not vblank_yield:
+        env["GBARECOMP_YIELD_ON_VBLANK"] = "0"
+    if waitcnt_write is not None:
+        env["GBARECOMP_MMIO_DUMP"] = str(artifact_dir / "waitcnt-mmio.csv")
     start = time.monotonic()
     try:
         proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, timeout=args.timeout)
@@ -83,6 +106,11 @@ def run_case(case, args, output):
     failures = []
     if row["exit_code"] != 0:
         failures.append("exit_code")
+    if waitcnt_write is not None:
+        if saw_waitcnt_write(artifact_dir / "waitcnt-mmio.csv", waitcnt_write):
+            row["waitcnt_write_observed"] = f"0x{waitcnt_write:04x}"
+        else:
+            failures.append("waitcnt_write")
     for key, value in expected.items():
         if key not in FIELDS:
             raise ValueError(f"{name}: unknown expectation {key}")

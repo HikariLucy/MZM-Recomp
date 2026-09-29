@@ -1,16 +1,25 @@
-# M4 next target: Game Pak prefetch-buffer timing
+# M4 next target: executable RAM haze variants
 
-Dynamic WAITCNT waitstates are implemented and tested in the separate local
-GBARecomp branch `mzm/waitcnt-timing`; the official pin remains `e7728148`.
-See [M4 WAITCNT](M4-WAITCNT.md) for RED→GREEN, MZM trace, SRAM, regression,
-and oracle limits. The MZM decomp writes `0x45B4` in `InitializeGame`, which
-enables the hardware prefetch buffer on bit 14. Its `WAIT_GAMEPACK_CGB`
-name is misleading relative to GBATEK.
+The prefetch audit in [M4 Game Pak prefetch](M4-GAMEPAK-PREFETCH.md) found
+that `GbaBus::access_cycles()` cannot correct instruction timing by itself:
+both CPU engines embed a fixed instruction fetch cost, and no shared dynamic
+fetch seam exists. Exact queue fill, DMA contention and midstream WAITCNT
+ordering still need an independent oracle. The isolated upstream
+`mzm/gamepak-prefetch` worktree remains at dynamic WAITCNT commit `6ab52a2`
+with no prefetch implementation. The official MZM pin remains `e7728148`.
 
-**Selected next target: A, Game Pak prefetch-buffer timing.** MZM enables it,
-and a 1400-step probe shows changed cycle counts after the dynamic waitstate
-fix. The missing buffer state is now a direct timing gap on a verified MZM
-route. Executable RAM haze and Chozodia remain important but are less directly
-exercised by the current reproducible route. Prefetch should have its own
-isolated change after fetch timing and oracle qualification; no prefetch
-implementation began in the WAITCNT branch.
+**Selected next MZM compatibility target: executable RAM `hazeCode` variants.**
+The [compatibility matrix](M4-COMPATIBILITY-MATRIX.md) records this as the
+other demonstrated engine-level `BLOCKED` gap: different code bodies can
+occupy the same RAM PC, while current fixed mapping chooses one body. A
+variant-aware native dispatch qualification would advance MZM compatibility
+without asserting unverified cycle precision. Chozodia and NES Metroid remain
+later routes. No haze implementation begins in this audit.
+
+Game Pak prefetch remains a separate timing track. Its next prerequisites are
+a shared generated/interpreter instruction-fetch seam, per-machine snapshot
+design, source-grounded event ordering tests, and a local cycle oracle such as
+NBA through `oracle/diff_cycle_nba.py`. MZM case
+`03_initialize_game_timing` now provides a repeatable strict-static route to
+the `WAITCNT=0x45B4` write for that future comparison. Passing it alone does
+not qualify Game Pak prefetch timing.

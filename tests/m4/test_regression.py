@@ -9,6 +9,47 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RegressionTests(unittest.TestCase):
+    def test_case_can_require_waitcnt_write_and_disable_vblank_yield(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            for name in ("rom.gba", "bios.bin"):
+                (base / name).write_bytes(b"test")
+            binary = base / "fake-game"
+            binary.write_text(
+                "#!/bin/sh\n"
+                "test \"$GBARECOMP_YIELD_ON_VBLANK\" = 0 || exit 8\n"
+                "printf 'idx,cycle,pc,addr,value,size\\n0,9,0x08000000,0x04000204,0x45b4,2\\n' > \"$GBARECOMP_MMIO_DUMP\"\n"
+                "echo 'cpu_backend=static-recompiled strict_static=ENABLED final_pc=0x000001b4 steps=1400 cycles=67667408 ppu_frames=317'\n"
+                "echo 'dispatch_misses=0 interpreted_insns=0 unmapped=0 io_unhandled=0'\n"
+            )
+            binary.chmod(0o755)
+            cases = base / "cases.toml"
+            cases.write_text(
+                '[[case]]\nname = "init"\nrom_target = "usa"\nsteps = 1400\n'
+                'vblank_yield = false\nwaitcnt_write = 0x45b4\n'
+                '[case.expect]\nfinal_pc = "0x000001b4"\n'
+            )
+            report = base / "report"
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "tools/m4-regression/run.py"),
+                 "--cases", str(cases), "--bin", str(binary),
+                 "--rom", str(base / "rom.gba"), "--bios", str(base / "bios.bin"),
+                 "--output", str(report)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            row = json.loads((report / "summary.json").read_text())["cases"][0]
+            self.assertEqual(row["cycles"], 67667408)
+            self.assertEqual(row["waitcnt_write_observed"], "0x45b4")
+            binary.write_text("#!/bin/sh\necho 'final_pc=0x000001b4 cycles=67667408'\n")
+            missing = base / "missing-write"
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "tools/m4-regression/run.py"),
+                 "--cases", str(cases), "--bin", str(binary),
+                 "--rom", str(base / "rom.gba"), "--bios", str(base / "bios.bin"),
+                 "--output", str(missing)], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            row = json.loads((missing / "summary.json").read_text())["cases"][0]
+            self.assertIn("waitcnt_write", row["failed_checks"])
+
     def test_case_runner_accepts_clean_strict_static_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
