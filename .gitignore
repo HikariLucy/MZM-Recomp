@@ -55,3 +55,6 @@ __pycache__/
 /keybinds.ini
 /rom.cfg
 /recomp_coverage_*.json
+
+# Local M4 ROM-derived checkpoints (also covered by .local/)
+.local/m4-checkpoints/

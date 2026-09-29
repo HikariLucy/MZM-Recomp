@@ -1,0 +1,30 @@
+# USA rev 0 only. Expectations assert strict-static coverage, not visual fidelity.
+[[case]]
+name = "01_boot_headless"
+rom_target = "usa"
+bios_required = true
+config = "configs/mzm-us.toml"
+frames = 1
+[case.expect]
+cpu_backend = "static-recompiled"
+strict_static = "ENABLED"
+dispatch_misses = 0
+interpreted_insns = 0
+unmapped = 0
+io_unhandled = 0
+
+[[case]]
+name = "02_static_120_frames"
+rom_target = "usa"
+bios_required = true
+config = "configs/mzm-us.toml"
+frames = 120
+artifacts = ["final.png"]
+[case.expect]
+cpu_backend = "static-recompiled"
+strict_static = "ENABLED"
+dispatch_misses = 0
+interpreted_insns = 0
+unmapped = 0
+io_unhandled = 0
+ppu_frames = 120
