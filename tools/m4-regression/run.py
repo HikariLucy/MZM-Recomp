@@ -13,9 +13,10 @@ import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
-FIELDS = ("cpu_backend", "strict_static", "dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "final_pc", "ppu_frames", "steps", "cycles")
-COUNTERS = {"dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "ppu_frames", "steps", "cycles"}
+FIELDS = ("cpu_backend", "strict_static", "dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "final_pc", "ppu_frames", "steps", "cycles", "hook_calls", "haze_attempts", "haze_matches", "haze_variant_observed", "haze_runtime_pc", "haze_source_pc")
+COUNTERS = {"dispatch_misses", "interpreted_insns", "unmapped", "io_unhandled", "ppu_frames", "steps", "cycles", "hook_calls", "haze_attempts", "haze_matches"}
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+HAZE_HIT = re.compile(r"^mzm_ram_dispatch kind=haze variant=(Haze_\w+) runtime_pc=(0x[0-9a-fA-F]{8}) source_pc=(0x[0-9a-fA-F]{8}) match=1 native=1 hits=\d+$", re.M)
 
 
 def read_metrics(log):
@@ -71,6 +72,9 @@ def run_case(case, args, output):
     waitcnt_write = case.get("waitcnt_write")
     if waitcnt_write is not None and (type(waitcnt_write) is not int or not 0 <= waitcnt_write <= 0xFFFF):
         raise ValueError(f"{name}: waitcnt_write must be a halfword")
+    haze_variant = case.get("haze_variant")
+    if haze_variant is not None and (not isinstance(haze_variant, str) or not re.fullmatch(r"Haze_[A-Za-z0-9]+", haze_variant)):
+        raise ValueError(f"{name}: invalid haze_variant")
     row = {"case": name, "status": "FAIL", "exit_code": None, "duration": 0.0, "stable_final_pc": "final_pc" in case.get("expect", {})}
     if state and not state.is_file():
         log_path.write_text("checkpoint unavailable; no game process started\n")
@@ -89,6 +93,8 @@ def run_case(case, args, output):
         env["GBARECOMP_YIELD_ON_VBLANK"] = "0"
     if waitcnt_write is not None:
         env["GBARECOMP_MMIO_DUMP"] = str(artifact_dir / "waitcnt-mmio.csv")
+    if haze_variant is not None:
+        env["MZM_TRACE_RAM_DISPATCH"] = "1"
     start = time.monotonic()
     try:
         proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, timeout=args.timeout)
@@ -111,6 +117,14 @@ def run_case(case, args, output):
             row["waitcnt_write_observed"] = f"0x{waitcnt_write:04x}"
         else:
             failures.append("waitcnt_write")
+    if haze_variant is not None:
+        hits = [hit for hit in HAZE_HIT.finditer(log) if hit.group(1) == haze_variant]
+        if hits and row.get("haze_matches", 0) >= 1:
+            row["haze_variant_observed"] = haze_variant
+            row["haze_runtime_pc"] = hits[0].group(2).lower()
+            row["haze_source_pc"] = hits[0].group(3).lower()
+        else:
+            failures.append("haze_variant")
     for key, value in expected.items():
         if key not in FIELDS:
             raise ValueError(f"{name}: unknown expectation {key}")

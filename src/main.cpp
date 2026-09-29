@@ -118,6 +118,7 @@ int main(int argc, char** argv) {
 #endif
 
     mzm_report_milestone_probe();
+    mzm_report_ram_dispatch();
     if (const char* strict = std::getenv("GBARECOMP_STRICT_STATIC"); strict && *strict == '1')
         mzm::log_event(rc == 0 ? "cpu_backend=static-recompiled strict_result=ok"
                                : "cpu_backend_request=static-recompiled strict_result=error");
