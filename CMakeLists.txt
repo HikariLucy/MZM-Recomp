@@ -89,6 +89,10 @@ if(BUILD_TESTING)
     add_executable(mzm_haze_resolver_test tests/m4/haze_resolver_test.cpp)
     target_include_directories(mzm_haze_resolver_test PRIVATE src)
     add_test(NAME mzm-haze-resolver COMMAND mzm_haze_resolver_test)
+
+    add_executable(mzm_chozodia_resolver_test tests/m4/chozodia_resolver_test.cpp)
+    target_include_directories(mzm_chozodia_resolver_test PRIVATE src)
+    add_test(NAME mzm-chozodia-resolver COMMAND mzm_chozodia_resolver_test)
 endif()
 
 

@@ -1,5 +1,6 @@
 #include "mzm_ram_dispatch.h"
 #include "mzm_haze_resolver.h"
+#include "mzm_chozodia_resolver.h"
 #include "mzm_milestone_probe.h"
 
 #include <cstddef>
@@ -47,6 +48,8 @@ struct DispatchStats {
     std::uint64_t hook_calls = 0;
     std::uint64_t haze_attempts = 0;
     std::uint64_t haze_matches = 0;
+    std::uint64_t chozodia_attempts = 0;
+    std::uint64_t chozodia_matches = 0;
     std::uint64_t variant_hits[mzm_haze::kTemplates.size()] = {};
     bool trace = false;
     bool capture_requested = false;
@@ -104,6 +107,24 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
         return 1;
     }
 
+    if (pc == mzm_chozodia::kRuntimeStart) {
+        ++g_stats.chozodia_attempts;
+        if (mzm_chozodia::identify(pc, true, [](std::uint32_t addr) {
+                return bus_read_u8(addr);
+            })) {
+            if (++g_stats.chozodia_matches == 1 && g_stats.trace) {
+                std::fprintf(stderr,
+                             "mzm_ram_dispatch kind=chozodia_hblank "
+                             "runtime_pc=0x%08x source_pc=0x%08x match=1 native=0 hits=1\n",
+                             pc, mzm_chozodia::kSourceStart);
+                std::fflush(stderr);
+            }
+        }
+        // The generated ROM translation exposes ROM PC to IRQ preemption and
+        // uses ROM-relative timing. Image identity alone cannot authorize it.
+        return 0;
+    }
+
     // MZM's normal System-mode stack begins at 0x03007E60. Restrict this
     // canonicalizer to the high-IWRAM stack/scratch window so fixed IWRAM code
     // copies continue through the normal generated dispatch table.
@@ -148,10 +169,12 @@ void mzm_report_ram_dispatch() {
     }
     std::fprintf(stderr,
                  "mzm_ram_dispatch_summary hook_calls=%llu haze_attempts=%llu "
-                 "haze_matches=%llu",
+                 "haze_matches=%llu chozodia_attempts=%llu chozodia_matches=%llu",
                  static_cast<unsigned long long>(g_stats.hook_calls),
                  static_cast<unsigned long long>(g_stats.haze_attempts),
-                 static_cast<unsigned long long>(g_stats.haze_matches));
+                 static_cast<unsigned long long>(g_stats.haze_matches),
+                 static_cast<unsigned long long>(g_stats.chozodia_attempts),
+                 static_cast<unsigned long long>(g_stats.chozodia_matches));
     for (std::size_t i = 0; i < mzm_haze::kTemplates.size(); ++i) {
         std::fprintf(stderr, " %s=%llu", mzm_haze::kTemplates[i].name,
                      static_cast<unsigned long long>(g_stats.variant_hits[i]));
