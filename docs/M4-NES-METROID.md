@@ -85,7 +85,7 @@ The executable images are not globally immutable. Payload mutates its DMA table;
 |---|---|
 | NES-0 | Reconstruct and hash exact payload and six emulator images from verified local ROM; obtain per-image instruction/data maps; compare nested build only if available |
 | **NES-1a (QUALIFIED)** | Generate exact public ROM islands and prove real BL → loader → SWI 0x11 → **first RAM PC `0x03007400`**, with byte gate, CPU state, and zero earlier strict-static misses; PASS |
-| NES-1b | Execute the locally derived `0x214`-byte payload at `0x03007400` strict-static; select a valid external/derived executable-image input architecture only after NES-1a passes |
+| **NES-1b (QUALIFIED)** | Execute the locally derived `0x214`-byte payload at `0x03007400` strict-static; byte-verified, WAITCNT=0x0014 write, DMA loops completed, post-payload frontier `0x06006558` reached with zero misses; PASS |
 | NES-2 | Payload executes through all decompression/DMA stages to `0x06006558`; generic VRAM dispatch and external-image support qualified |
 | NES-3 | Emulator initializes and yields first frame with zero strict-static counters |
 | NES-4 | Title, input and audio qualified against a reference |
@@ -154,3 +154,45 @@ Data suppression is 100% verified: `0x087D8004` is NOT generated, and no entries
 
 CTest: `mzm-nes-loader-frontier` PASS (54/54 overall suite PASS).
 Harness cases 01/02/03 PASS (Case 03: 317 frames, `WAITCNT=0x45B4`, `final_pc=0x000001b4`).
+
+## NES-1b qualification (2026-09-29): strict-static payload execution (PASS)
+
+Milestone **NES-1b** is fully qualified and verified.
+
+### Architecture & implementation
+1. **Multi-Image Support in GBARecomp (`[[executable_image]]`)**:
+   - Upstream GBARecomp extended with `ExecutableImageRegistry` in `src/recompile/executable_image.h` / `src/recompile/executable_image.cpp`.
+   - Ingests `.local/nes-payload-usa.bin` derived locally from legal USA ROM at build time (`scripts/extract-nes-payload.py`).
+   - Zero Nintendo-derived binaries committed to the git repository.
+   - Enforces SHA-256 verification (`e94f6dba7b7ec0dd183335fa2efdd5bb5a1f4dc1f7593d8e8961b1e2ce681f44`) and address overlap rejection.
+   - `FunctionFinder` propagates `private_entry` along CFG branches within the same secondary executable image, preventing private internal functions from leaking into `kDispatchTable` and ensuring full resume aliases in `kPrivateDispatchTable`.
+   - `g_runtime_ram_dispatch_hook` extended in GBARecomp to service VRAM execution (`0x06000000..0x07000000`).
+
+2. **MZM Configuration**:
+   - `configs/mzm-us.toml` defines `[[executable_image]] id = "nes_payload"`, data ranges `[0x03007450, 0x03007458)` and `[0x03007560, 0x03007614)`, and private roots `0x03007400`, `0x03007458`, and `0x030074E4` (`dispatch = false`).
+   - Generates 16 shards with `undefined=0`, mapping all 133 ARM instructions of the payload into `kPrivateDispatchTable`.
+
+3. **Runtime Execution & Byte Gate**:
+   - `mzm_ram_dispatch` hooks ARM dispatches in `0x03007400..0x03007614`.
+   - On initial entry (`0x03007400`), verifies the complete 532-byte payload image against SHA-256 `e94f6dba...`.
+   - Latches payload authentication for subsequent internal loops and DMA cursor updates.
+   - Executes strictly static native translations via `runtime_invoke_private_entry`.
+
+### Real execution qualification (`tests/m4/nes_payload_frontier_test.cpp`)
+- Chain: Trampoline `0x087D8000` → Loader `0x087D80D4` → SWI 0x11 LZ77 → Continuation `0x087D8110` → Pop PC `0x03007400` → Native payload execution → Post-payload frontier `0x06006558`.
+- WAITCNT: `0x0014` written at `0x03007408` (verified after payload completion).
+- Decompression/DMA staging loop runs to completion in native AOT code.
+- Post-payload frontier reached:
+  - `PC = 0x06006558` (ARM mode in VRAM)
+  - `SP = 0x03007EF8`
+  - `LR = 0x087D8004`
+  - Host call stack depth: 0
+  - `dispatch_misses = 0`, `interpreted_insns = 0`, `unmapped = 0`, `io_unhandled = 0`
+  - Zero self-heal misses (`!gbarecomp::self_heal_any_misses()`)
+  - NES payload dispatch hits: 36,785 / 36,785 matches.
+
+### Verification suites
+- MZM CTest: **56/56 PASS** (including `mzm-nes-loader-frontier` and `mzm-nes-payload-frontier`).
+- GBARecomp CTest: **51/51 PASS**.
+- Pytest: **9/9 PASS**.
+- M4 regression suite: Cases 01, 02, 03 **PASS** (Case 03: 317 frames, `WAITCNT=0x45B4`, `final_pc=0x000001b4`).

@@ -54,14 +54,15 @@ e7728148c6829ba526f682876430a0c9022dc6c0
 M4 integration revision used by the current MZM build:
 
 ```text
-984957a4f1c70379e9ce6717c1fd080aecf7e37d
+e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21
 ```
 
 This local revision combines MOSAIC, WAITCNT, private relocated entry,
-non-returning calls (`returns = false`), and terminal SoftReset control-flow
-commits on the M0 base. `CMakeLists.txt` and `scripts/generate-m1.sh` check
-the exact SHA through the supplied `GBARECOMP_ROOT`; no branch name or local
-absolute path is part of the dependency pin.
+non-returning calls (`returns = false`), terminal SoftReset control-flow,
+multi-image `[[executable_image]]` architecture, secondary image private_entry
+propagation, and VRAM execution support in `g_runtime_ram_dispatch_hook` on the M0 base.
+`CMakeLists.txt` and `scripts/generate-m1.sh` check the exact SHA through the supplied
+`GBARECOMP_ROOT`; no branch name or local absolute path is part of the dependency pin.
 
 License at the audited revision: **PolyForm Noncommercial License 1.0.0**.
 

@@ -1,6 +1,6 @@
 # M4 compatibility matrix (USA rev 0)
 
-Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `984957a4f1c70379e9ce6717c1fd080aecf7e37d`, based on `e7728148c6829ba526f682876430a0c9022dc6c0`. `PASS` means only the stated route passed. Framework capability alone is not an MZM pass. `PARTIAL` means some evidence exists but scope or fidelity remains open. `BLOCKED` identifies a demonstrated engine gap. Historical evidence is labeled separately from the new automated run.
+Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21`, based on `e7728148c6829ba526f682876430a0c9022dc6c0`. `PASS` means only the stated route passed. Framework capability alone is not an MZM pass. `PARTIAL` means some evidence exists but scope or fidelity remains open. `BLOCKED` identifies a demonstrated engine gap. Historical evidence is labeled separately from the new automated run.
 
 | Area | Feature / Route | Status | Evidence | Automation | Remaining Risk |
 |---|---|---|---|---|---|
@@ -50,14 +50,14 @@ Audit date: 2026-09-29. M4 base: `a4de093`. GBARecomp integration pin: `984957a4
 | Zero Suit | Late Zero Suit section | UNVERIFIED | No recorded route | No | Mechanics, transitions, copied code |
 | NES | Bootloader ROM execution | PASS | [NES-1a qualification](M4-NES-METROID.md): `0x087D8000` trampoline and `0x087D80D4` loader execute via generated native entries with non-returning BL (`returns = false`), reaching dynamic frontier `0x03007400` with zero misses and depth 0 host stack | `mzm-nes-loader-frontier` CTest | Payload execution is next milestone (NES-1b) |
 | NES | Payload extraction | PASS | Verified in-process BIOS LZ77 extraction to IWRAM `0x03007400..0x03007614` (`0x214` bytes); guest bytes match independent ROM reconstruction with SHA-256 `e94f6dba7b7ec0dd183335fa2efdd5bb5a1f4dc1f7593d8e8961b1e2ce681f44` | `mzm-nes-loader-frontier` CTest | Static execution of extracted payload |
-| NES | Payload RAM execution | BLOCKED | `0x03007400` ARM has no normal/private entry; compressed source has no usable `source_addr` | No | External image input and byte gate |
-| NES | Emulator Part 1 | BLOCKED | VRAM `0x06006000..0x06007240`; no source image or dynamic VRAM hook | No | Extraction, generator VRAM relocation and dispatch |
+| NES | Payload RAM execution | PASS | [NES-1b qualification](M4-NES-METROID.md): strict-static native execution of extracted payload `0x03007400..0x03007614` via `[[executable_image]]`; byte-verified, writes WAITCNT `0x0014`, completes DMA staging loops, and reaches post-payload frontier `0x06006558` ARM with zero misses and depth 0 host stack | `mzm-nes-payload-frontier` CTest | Emulator Part 1 execution is next (NES-2) |
+| NES | Emulator Part 1 | BLOCKED | VRAM `0x06006000..0x06007240`; entry `0x06006558` reached as post-payload frontier | No | Extraction, generator VRAM relocation and dispatch |
 | NES | Emulator Part 2 | BLOCKED | IWRAM `0x03000000..0x03005A4C`; hook range exists, compressed source absent | No | Extraction, cross-part CFG |
 | NES | Emulator Part 3 | BLOCKED | VRAM `0x0600B000..0x0600B150` | No | Extraction and dynamic VRAM dispatch |
 | NES | Emulator Part 4 | BLOCKED | VRAM `0x0600C000..0x0600C060`; initialization overlays region | No | Track active image and verify bytes |
 | NES | Emulator Part 5 | BLOCKED | VRAM `0x0600E000..0x0600ED88` | No | Extraction and dynamic VRAM dispatch |
 | NES | Emulator Part 6 | BLOCKED | EWRAM `0x0203E000..0x0203E8E0`; SRAM helpers execute stack copies | No | Extraction and stack-copy qualification |
-| NES | VRAM executable dispatch | BLOCKED | Integrated runtime RAM hook ends at `0x04000000`; private CFG/literal relocation also RAM-bound | No | Generic dynamic-executable hook and VRAM generator fixture |
+| NES | VRAM executable dispatch | PARTIAL | Integrated runtime hook supports VRAM (`0x06000000..0x07000000`); post-payload frontier `0x06006558` successfully captured | `mzm-nes-payload-frontier` CTest | Static translation of VRAM code parts |
 | NES | Interrupts | UNVERIFIED | IRQ references and HBlank/VBlank use in nested sources | No | Real NES IRQ route |
 | NES | Audio | UNVERIFIED | Part 2 audio, DMA1 FIFO A and timers | No | NES route and audio oracle |
 | NES | Input | UNVERIFIED | Part 1/5 key and menu paths | No | Real NES input route |

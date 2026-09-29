@@ -27,16 +27,16 @@ LZ77 stream byte-for-byte (`0x214` bytes, SHA-256
 quit/reset stub cleanly services `RegisterRamReset` and `SoftReset` back to
 cartridge re-entry at `0x08000000` ARM without executing adjacent literal pools.
 
-**Next target: NES-1b.** Execute strict-static the payload image:
-- Runtime range: `0x03007400..0x03007614`
-- Size: `0x214` bytes (532 bytes)
-- Mode: ARM
-- Source: derived decompressed stream (SHA-256 `e94f6dba7b7ec0dd183335fa2efdd5bb5a1f4dc1f7593d8e8961b1e2ce681f44`)
+**NES-1b is QUALIFIED (PASS).** Strict-static native execution of the derived ARM
+payload (`0x03007400..0x03007614`, 532 bytes, SHA-256 `e94f6dba7b7ec0dd183335fa2efdd5bb5a1f4dc1f7593d8e8961b1e2ce681f44`)
+is fully verified in `tests/m4/nes_payload_frontier_test.cpp`.
+- GBARecomp `[[executable_image]]` multi-image architecture ingests `.local/nes-payload-usa.bin` at build time without committing Nintendo binaries.
+- All 133 ARM instructions of the payload are recompiled into static private entries with full resume aliases (`kPrivateDispatchTable`).
+- Strict-static payload execution executes natively, writes WAITCNT `0x0014` at `0x03007408`, drives DMA setup and transfers, and reaches the first dynamic frontier posterior to the payload at `0x06006558` ARM (VRAM).
+- Host call stack depth is 0; dispatch misses: 0; interpreted instructions: 0; unmapped bus/IO: 0.
 
-The payload bytes do not exist as a contiguous uncompressed image within the
-main ROM. The next architectural design must establish a mechanism for:
-- local derived executable image ingestion, or
-- recompiler external/multi-image input support, or
-- the minimal clean equivalent.
-
-Do not implement NES-1b yet.
+**Next target: NES-2.** Payload execution through all custom decompression and DMA stages to NES emulator execution in VRAM:
+- Decompress and reconstruct the six NES emulator executable parts from the user's USA ROM.
+- Ingest VRAM/IWRAM/EWRAM emulator images via `[[executable_image]]`.
+- Recompile emulator Part 1 (`0x06006558` ARM) and associated cross-part call graph.
+- Execute strict-static into the NES emulator core.
