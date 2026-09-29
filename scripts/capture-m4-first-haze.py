@@ -138,7 +138,11 @@ def main() -> int:
             capture_thread.join(timeout=35)
     except KeyboardInterrupt:
         process.terminate()
-        process.wait(timeout=5)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
     if result["error"]:
         return 2
     if not result["hit"]:
