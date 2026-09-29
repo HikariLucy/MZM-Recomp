@@ -103,3 +103,62 @@ strict-static misses/interpreter instructions. Then compare the same scene
 without the haze hook for a real RED→GREEN dispatch result. A later Power
 Bomb checkpoint should prove expansion→retraction swaps in one buffer.
 Power Bomb swap and full haze function execution remain UNVERIFIED.
+
+## First real-scene capture preparation (2026-09-29)
+
+**Selected candidate:** Brinstar room 12, `EFFECT_WEAK_ACID` →
+`HAZE_VALUE_BG3` → `Haze_Bg3`. A new save starts in Brinstar room 0;
+the decomp's door table has a four-edge topological path
+`0 → 3 → 6 → 7 → 12`. This establishes an early-area candidate, **not** a
+verified playable route: door locks, event state and player abilities were
+not proven from that graph. Crateria room 7 (water) and Norfair room 1
+(lava) also select BG3, but require an area transition from the new-game
+starting area. All three are scene candidates, not executed evidence.
+
+The optional `MZM_TRACE_RAM_DISPATCH=1` mode prints one line on the first
+verified hit of each variant, never per frame:
+
+```text
+mzm_ram_dispatch kind=haze variant=Haze_Bg3 runtime_pc=0x03001944 source_pc=0x0805d768 match=1 native=1 hits=1
+```
+
+At process exit it reports `hook_calls`, `haze_attempts`, `haze_matches`,
+and per-variant hit counts. With `MZM_DISABLE_HAZE_RAM_DISPATCH=1`, the
+byte-perfect resolver still records the matched variant but emits
+`native=0` and returns unhandled. That switch is reserved for the real
+RED run from the *same* checkpoint; it does not change ordinary launches.
+The existing 01/02/03 regression cases had respectively 0/0/7053 hook
+calls and **zero haze attempts and matches**, confirming they cannot prove
+the new execution route.
+
+`scripts/capture-m4-first-haze.py` runs the separate `build-m4-haze` binary
+with a window and the existing `--tcp-observe` service. It enables strict
+static and sets `GBARECOMP_PRESENT_IN_PLACE=0`: the snapshot format requires
+the native call stack to unwind between `step_once()` calls. At a first
+verified `Haze_Bg3` event, the wrapper sends `savestate_save` to the
+observer; the runtime services it at the next clean present boundary.
+The RAM hook only reports the event and never serializes a half-executed
+function. `MZM_M4_CAPTURE_FIRST_HAZE=<path>` is set by this wrapper; use
+the wrapper rather than setting that variable on the binary alone.
+
+Run one manual session from the repository root:
+
+```bash
+python3 scripts/capture-m4-first-haze.py \
+  --rom '/home/hikarilucy/proyectos/Recomp/Metroid-ZeroMissionRecomp/_m0/upstream/mzm/mzm_us_baserom.gba' \
+  --bios '/home/hikarilucy/proyectos/Recomp/Metroid-ZeroMissionRecomp/gba_bios.bin'
+```
+
+An existing personal SRAM save can be copied into the isolated local
+session with `--initial-save '/path/to/personal.sav'`; the original is never
+written. On success the wrapper prints `CAPTURED`, variant, PCs and local
+checkpoint path. The expected destination is
+`.local/m4-checkpoints/haze-bg3.state`, ignored by Git; no checkpoint is
+packaged. The script rejects an existing destination to prevent overwrite.
+
+Capture plumbing was smoke-tested separately with a temporary BIOS/boot
+state: observer save succeeded, and headless `--load-state` advanced one
+frame with zero strict-static counters. A 120-frame dummy-window run with
+present-in-place disabled also finished with zero counters. Neither test
+activated haze. The real checkpoint remains absent; case 04, RED/GREEN,
+IRQ/resume and three-run repeatability are **PENDING HUMAN RUN**.
