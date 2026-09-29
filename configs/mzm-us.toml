@@ -50,3 +50,24 @@ mode = "thumb"
 name = "chozodia_hblank_ram"
 dispatch = false
 note = "byte-verified Chozodia Escape HBlank RAM image"
+
+[[extra_func]]
+addr = 0x087D8000
+mode = "arm"
+name = "nes_rom_trampoline"
+
+[[extra_func]]
+addr = 0x087D80D4
+mode = "arm"
+name = "nes_rom_loader"
+returns = false
+
+[[extra_func]]
+addr = 0x087D8124
+mode = "arm"
+name = "nes_rom_reset_arm"
+
+[[extra_func]]
+addr = 0x087D812C
+mode = "thumb"
+name = "nes_rom_reset_thumb"
