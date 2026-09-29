@@ -1,5 +1,10 @@
 # M4 Chozodia Escape HBlank RAM code audit (BMXE rev 0)
 
+> This documents the committed `e7728148` pin and MZM's `native=0` resolver.
+> A later [private relocation experiment](M4-CHOZODIA-PRIVATE-RELOCATION.md)
+> proves RAM-PC native execution in an isolated GBARecomp worktree. MZM's
+> official pin and real-scene status have not changed.
+
 ## Layout and copied image
 
 The USA decomp's `src/globals1.c` defines `gNonGameplayRam`. The linked
