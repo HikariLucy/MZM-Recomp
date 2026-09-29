@@ -1,4 +1,5 @@
 #include "mzm_ram_dispatch.h"
+#include "mzm_haze_resolver.h"
 #include "mzm_milestone_probe.h"
 
 #include <cstddef>
@@ -25,6 +26,20 @@ constexpr RamTemplate kStackHelpers[] = {
     {0x0800529Cu, 0x30u, &gf_SramCheckInternal},
 };
 
+// Index order matches mzm_haze::kTemplates. BG3/BG2/BG1 is copied but
+// HazeProcess calls its ROM entry directly; retaining it here makes the
+// resolver cover every observed byte image without changing that control flow.
+constexpr void (*kHazeNative[])() = {
+    &gf_Haze_Bg3,
+    &gf_Haze_Bg3StrongWeak,
+    &gf_Haze_Bg3NoneWeak,
+    &gf_Haze_Bg3Bg2StrongWeakMedium,
+    &gf_Haze_Bg3Bg2Bg1,
+    &gf_Haze_PowerBombExpanding,
+    &gf_Haze_PowerBombRetracting,
+};
+static_assert(std::size(kHazeNative) == mzm_haze::kTemplates.size());
+
 bool guest_bytes_match(std::uint32_t runtime_pc,
                        std::uint32_t source_pc,
                        std::uint32_t size) {
@@ -39,6 +54,17 @@ bool guest_bytes_match(std::uint32_t runtime_pc,
 int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
     if (!thumb) {
         return 0;
+    }
+
+    if (pc == mzm_haze::kRuntimeStart) {
+        const int variant = mzm_haze::identify(pc, true, [](std::uint32_t addr) {
+            return bus_read_u8(addr);
+        });
+        if (variant < 0) {
+            return 0;
+        }
+        kHazeNative[variant]();
+        return 1;
     }
 
     // MZM's normal System-mode stack begins at 0x03007E60. Restrict this

@@ -2,7 +2,6 @@
 
 // Install MZM-specific dynamic RAM dispatch support.
 //
-// The current hook recognizes byte-identical copies of the two position-
-// independent SRAM helper routines that the original cartridge copies into
-// transient stack-local buffers before calling them.
+// The hook recognizes byte-identical copies of two transient stack-local
+// SRAM helpers and the seven hazeCode images (six called from RAM).
 void mzm_install_ram_dispatch_hook();
