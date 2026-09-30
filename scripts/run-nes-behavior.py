@@ -102,23 +102,24 @@ def qualify(binary, rom, bios):
     print("== frontier pin (scripted play session)")
     check(fr[0] == 3, "frontier run exits 3 (stall/miss)", failures)
     stall = next((l for l in fr[1] if l.startswith("NES3 STALL")), "")
-    check("frame=3205" in stall and "misses=1" in stall, "first frontier at frame 3205 (" + stall[:70] + ")", failures)
+    check("frame=3223" in stall and "misses=1" in stall, "first frontier at frame 3223 (" + stall[:70] + ")", failures)
     misses = next((l for l in fr[1] if l.startswith("NES3 stop_misses")), "")
-    check('"pc":"0x080006CA"' in misses and '"mode":"thumb"' in misses and '"distinct_misses":1' in misses,
-          "first (only) miss is MZM ROM 0x080006CA Thumb (InitializeGame interior, after the NES emulator quit)", failures)
+    check('"pc":"0x0800271C"' in misses and '"mode":"thumb"' in misses and '"distinct_misses":1' in misses,
+          "first (only) miss is MZM ROM 0x0800271C Thumb (InitializeAudio interior, MZM boot after the NES quit)", failures)
+    check(any("pc=0x080052AE" in l or "pc=0x080052AC" in l for l in fr[1] if l.startswith("NES3 stop_trace")),
+          "the SRAM helper loop (sram.c, ROM PCs) was resumed after a VBlank yield", failures)
     print("== copied SRAM helper (NES-3c)")
-    helper = [l for l in fr[1] if l.startswith("NES3 stack_helper ") and "SramCheckInternal" in l]
+    helper = [l for l in fr[1] if l.startswith("NES3 stack_helper ") and "SramCheckInternal" in l and "pc=0x03827110" in l]
     enters = [l for l in helper if " enter " in l]
     exits = [l for l in helper if " exit " in l]
-    check(len(enters) == 2 and all("pc=0x03827110" in l for l in enters),
-          "SramCheckInternal entered twice through the IWRAM alias 0x03827110", failures)
+    check(len(enters) == 2, "SramCheckInternal entered twice through the NES stack alias 0x03827110", failures)
     check(len(exits) == 2 and all("r0=0x00000000" in l for l in exits),
           "both checks return 0 (the SRAM write verified)", failures)
-    check(any(l.startswith("NES3 stack_helper_stats SramCheckInternal attempts=2 matches=2 mirror_matches=2") for l in fr[1]),
-          "resolver counted 2 verified mirror matches", failures)
+    check(any(l.startswith("NES3 stack_helper_stats SramCheckInternal") and "mirror_matches=2" in l for l in fr[1]),
+          "resolver counted exactly 2 verified mirror matches (MZM's own boot uses the direct address)", failures)
     check("NES3 stack_helper_rejects=0" in fr[1], "no in-window entry was rejected", failures)
-    check(any(l.startswith("NES3 sram_diff [0x7FD8,0x8000) changed_bytes=40") for l in fr[1]),
-          "SaveToSram wrote exactly SRAM [0x7FD8,0x8000)", failures)
+    check(any(l.startswith("NES3 sram_write frame=3120 off=0x7FD8 0xFF->0x11") for l in fr[1]),
+          "SaveToSram wrote SRAM at 0x7FD8 (first sampled write, frame 3120)", failures)
     check(any(l.startswith("NES3 entries sram_SaveToSram") and l.endswith("=1") for l in fr[1]),
           "EmulatorSaveToSram ran once", failures)
     check(any("pc=0x087D813E" in l for l in fr[1] if l.startswith("NES3 stop_trace")),

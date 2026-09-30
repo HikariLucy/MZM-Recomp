@@ -224,6 +224,11 @@ int main(int argc, char** argv) {
     }
     const std::uintptr_t stack_base = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
     const std::string emu_dir = argc > 3 ? argv[3] : MZM_NES_EMULATOR_DIR;
+    std::uint64_t diag_from = 0, diag_count = 0;
+    {
+        const std::string d = env_or("MZM_NES_DIAG_FRAMES", "");
+        if (!d.empty()) std::sscanf(d.c_str(), "%llu,%llu", (unsigned long long*)&diag_from, (unsigned long long*)&diag_count);
+    }
     const std::uint64_t max_frames = std::strtoull(env_or("MZM_NES_FRAMES", "1300").c_str(), nullptr, 10);
     const std::uint64_t ckpt_every = std::strtoull(env_or("MZM_NES_CHECKPOINT", "500").c_str(), nullptr, 10);
     const bool stop_on_frontier = env_or("MZM_NES_STOP_ON_FRONTIER", "1") == "1";
@@ -257,6 +262,7 @@ int main(int argc, char** argv) {
     gba::GbaPpu ppu;
     bus.set_rom(rom.data(), rom.size());
     bus.set_bios(&bios);
+    bus.io().set_ppu(&ppu);   // as runtime.cpp does: VCOUNT/DISPSTAT reads need the PPU (MZM SetupSoundTransfer spins on VCOUNT)
     bus.io().set_bus(&bus);
     bus.save().configure_sram(32 * 1024);
     gbarecomp::set_active_bus(&bus);
@@ -373,6 +379,11 @@ int main(int argc, char** argv) {
     };
     // Frame-boundary work: input injection, audio capture window, sampling.
     auto on_new_frame = [&](std::uint64_t frame) {
+        // Diagnostic (MZM_NES_DIAG_FRAMES="from,count"): guest state at each frame boundary.
+        if (diag_count && frame >= diag_from && frame < diag_from + diag_count)
+            std::printf("NES3 diag frame=%llu pc=0x%08X cpsr=0x%08X r0=0x%08X r1=0x%08X vcount=%u dispstat=0x%04X halted=%d\n",
+                        (unsigned long long)frame, g_cpu.R[15], g_cpu.cpsr, g_cpu.R[0], g_cpu.R[1],
+                        (unsigned)ppu.vcount(), (unsigned)bus.read16(0x04000004u), bus.io().halted() ? 1 : 0);
         // Input: same set_keyinput call as the production loop, one poll/frame.
         std::uint16_t pressed = 0;
         for (const auto& e : input)
