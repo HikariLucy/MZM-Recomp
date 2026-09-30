@@ -625,3 +625,62 @@ Unchanged status: `SaveToSram` executed and wrote SRAM (first sampled write `0x7
 ### Validation
 
 CTest 65/65 (new: `mzm-resume-entry`); Python 26/26 (new: `test_resume.py`); M4 01/02/03 PASS; NES-1a/1b/2b/3b/3c PASS; soak PASS; `git diff --check` PASS; GBARecomp unchanged at `2c40fe8`.
+
+## M4-RESUME-2 Reviewed resume units (2026-09-30): PASS
+
+### Policy
+
+`static_resume_all` was not adopted (it would publish unaudited resumes: 233,709 dispatch rows, ~179 MB of generated source, measured in M4-RESUME-1). `configs/mzm-resume-units.toml` is the versioned source of truth: a short list of reviewed units (range, mode, reason). `scripts/expand-resume-units.py` derives every instruction PC from the recompiler's own decode and emits the `[[extra_func]] resume = true` overlay, enforcing the safety contract (no C++ local crosses an instruction block, no statics, unit start is a function root). Generation is deterministic: two consecutive `scripts/generate-m1.sh` runs give byte-identical corpora (`md5(all generated *.cpp/*.h)` = `880d1eacafd5330c15ae30386dd537c4`) and an identical overlay.
+
+### Final units (7)
+
+| unit | range (Thumb) | functions | instructions | resume entries |
+|---|---|---|---|---|
+| InitializeGame | `[0x080006A0, 0x080007C4)` | 9 | 98 | 89 |
+| sram | `[0x080051D4, 0x08005368)` | 25 | 177 | 152 |
+| InitializeAudio | `[0x08002564, 0x080027F8)` | 14 | 260 | 246 |
+| BitFill | `[0x080032B4, 0x08003380)` | 9 | 95 | 86 |
+| RoomSetInitialTilemap | `[0x08056B28, 0x08056D18)` | 20 | 220 | 200 |
+| RoomRleDecompress | `[0x08056D18, 0x08056E28)` | 22 | 133 | 111 |
+| InitAndLoadGenerics | `[0x0800CBAC, 0x0800CDE8)` | 29 | 219 | 190 |
+
+Literal pools inside the ranges carry no instruction comment and are never published. Instructions per unit: 1,202 total; resume entries: 1,074.
+
+### Necessity by ablation
+
+Each unit's resume rows were removed from `dispatch_table.cpp` (scratch copy, restored afterwards) and the post-NES run repeated:
+
+| without | result |
+|---|---|
+| InitializeGame | miss `0x080006CA` (frame 3205) |
+| sram | miss `0x080051EE` (frame 3205) |
+| InitializeAudio | miss `0x0800271C` (frame 3223) |
+| RoomRleDecompress | miss (frame 3202) |
+| RoomSetInitialTilemap | NES-3 loader chain fails: LZ77 did not return to loader continuation |
+| InitAndLoadGenerics | same LZ77 failure |
+| BitFill | not hit in the first 3,600 frames; miss `0x0800331A` at frame 4390 (caller `0x08056D57`) in a 6,000-frame run |
+
+`DmaTransfer` (`[0x080031E4, 0x080032B4)`, audited: 9 functions, 95 instructions) was not needed in 9,000 frames with the scripted input nor in harness 01/02/03, so it is not published; it stays a candidate to add if a run shows a miss at `0x08003246`. Lesson recorded: a 3,600-frame ablation wrongly concluded BitFill was unneeded; ablation windows must cover the whole scenario.
+
+### End to end
+
+NES -> gameplay -> death -> GAME OVER/password -> save YES -> quit -> SoftReset -> MZM restart -> `InitializeGame` -> SRAM init -> `InitializeAudio` -> rest of boot -> **MZM title** (frame 3500, frame hash `FC3C48FE5B3F402B`, pinned) -> **MZM gameplay** (visible at frame 5500). 6,000 and 9,000 frame runs: no frontier, `dispatch_misses=0 interpreted_insns=0 unmapped=0 io_unhandled=0`, self-heal disabled. The pin in `scripts/run-nes-behavior.py` changed from "first miss `0x0800271C`" to "no frontier, MZM title hash at frame 3500".
+
+### Part 2 gate after the restart
+
+After the restart IWRAM holds MZM code where NES Part 2 lived, so the Part 2 byte gate rejects (`verify_fail` ~1.16 M over 6,000 frames, `invoke_fail=0`, `no_corpus=0`; every other part `verify_fail=0`; none before the quit). It fails closed and MZM's own static entries run; this is the intended behaviour and the test asserts it instead of requiring `resolver_fail=0`.
+
+### Scale
+
+| | resume entries | dispatch rows | generated source |
+|---|---|---|---|
+| resume-free pass | 0 | 36,265 | - |
+| 7 reviewed units | 1,074 | 37,339 | 158.7 MB |
+| 8 units (incl. DmaTransfer, intermediate) | 1,160 | 37,425 | 158.7 MB |
+| `static_resume_all` (M4-RESUME-1 measurement) | - | 233,709 | ~179 MB |
+
+(The M4-RESUME-1 figure of 28,670 rows as the no-resume base was measured on an earlier corpus; the resume-free row count of the current corpus is 36,265.)
+
+### Host stack, validation
+
+Hook high-water 5,768,016 bytes, unchanged. CTest 65/65, Python 37/37 (`tests/`, includes `test_resume.py`), harness 01/02/03 PASS, `mzm-nes-behavior` (qualify) PASS, soak 2 x 10,000 frames identical and strict-clean, `git diff --check` PASS, GBARecomp unchanged at `2c40fe8`. Audio (FIFO DMA gap) and save/load round trip are unchanged and out of scope.
