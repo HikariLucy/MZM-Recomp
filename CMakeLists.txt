@@ -254,6 +254,12 @@ if(BUILD_TESTING)
                         "$<TARGET_FILE:mzm_nes_behavior_test>" "${MZM_TEST_ROM}"
                         "${MZM_TEST_BIOS}")
                 set_tests_properties(mzm-nes-behavior PROPERTIES TIMEOUT 900)
+                add_test(NAME mzm-nes-save-roundtrip
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-nes-save-roundtrip.py"
+                        "$<TARGET_FILE:mzm_nes_behavior_test>" "${MZM_TEST_ROM}"
+                        "${MZM_TEST_BIOS}")
+                set_tests_properties(mzm-nes-save-roundtrip PROPERTIES TIMEOUT 1500)
             endif()
         endif()
         add_executable(mzm_chozodia_native_test

@@ -712,3 +712,41 @@ Result (no force bit; `MZM_NES_DIAG_FORCE_FIFO32` deleted from the test): 1,900-
 Audio status: structural PASS, host activity PASS, accuracy PARTIAL (no oracle or listening; output is non-constant, in range, time-varying, not proven correct).
 
 Windows Beta 2 prerequisites: host stack bounded, FIFO audio reaches the host, end-to-end chain green. Still open: save/load round trip and a Windows-specific smoke.
+
+## SAVE-LOAD-1 NES SRAM roundtrip
+
+Runner: `scripts/run-nes-save-roundtrip.py` (CTest `mzm-nes-save-roundtrip`, ~4 min) over `tests/m4/nes_behavior_test.cpp` with `MZM_NES_START=mzm`, `MZM_NES_ENTER_AT`, `MZM_NES_SAVE_DUMP/LOAD`, `MZM_NES_SRAM_TRACE/REPORT`, `MZM_NES_SAVE_LOG`. Nothing writes guest memory or SRAM. The only exception is the `MZM_NES_CORRUPT_SRAM` controls, printed as `CORRUPTION_CONTROL (non-qualifying)`.
+
+### Format (decomp `nes_metroid/emulator/src/part6.c`, `sram/sram.c`; confirmed by the observed calls)
+
+- The NES owns SRAM `[0x7FB0,0x8000)`: two 0x28-byte copies, slot A `0x7FB0` and slot B `0x7FD8`. MZM's `struct Sram` ends below `0x7FB0` (its last members are `bootDebugSave` and `MetZeroSramCheck_Text` at `0x7F80`).
+- `EmulatorSaveToSram(sp, src, dst)` writes `src+0x10 -> dst+0x10` (0x18 bytes) then `src -> dst` (0x10), each with `SramWriteChecked` (3 tries, verified by `SramCheck`). The emulated NES passes `src=0x0201C000`, `dst=SRAM+0x7FD8`. `0x0203E3AC` (writes both slots) was never called. `EmulatorLoadFromSram(src, dst, sp)` copies 0x28 bytes (NULL -> slot A) and returns 0x28, with no validation on the GBA side.
+- Block: bytes `0x00..0x0F` header `11 19 19 30 'R' 'O' 'I' 'D' '_' '3' '_' 'B' 01 01 'B' 'N'` (NES-side identity; validated by the emulated 6502 code, not by GBA code), bytes `0x10..0x21` the 18 password bytes (= `sPasswordBytes` at `0x0203E43C`, 24 six-bit characters), `0x22..0x27` zero. The password is captured by scraping the GAME OVER screen (`EmulatorRetrieveGameOverPassword`) and shown again by `EmulatorFillPasswordWithSaved`.
+- Boot: `LoadFromSram` is called twice (slot A, then slot B) into `0x0201C000`; the emulated code picks the valid one and `SaveToPasswordBytes(0x0201C000)` copies `block[0x10..0x22)` into `sPasswordBytes`. One flipped header byte or one flipped password byte makes the guest reject the block (password stays empty).
+
+### Ownership, and why MZM must boot first
+
+MZM's first boot on an erased SRAM fails its options sanity check and calls `EraseSram`, which writes all 0xFF over all 32 KiB, including `[0x7FB0,0x8000)`. The earlier NES-first harness therefore lost its save at the restart; on hardware the NES is only reachable after MZM has initialised its SRAM, and the NES entry in the Options menu needs `gFileScreenOptionsUnlocked.soundTestAndOrigMetroid` (a completed game). The roundtrip test cold-boots MZM (frame 0..19: MZM initialises its own ranges), enters the NES at frame 400 through the loader call that `OptionsNesMetroidHandler` stage 4 makes (`IME=0, IF=0xFFFF, r0=ROM_BASE`), and again at frame 4300. The Options-menu route itself is not exercised.
+
+### Result (frames are the PPU frame count)
+
+| step | observation |
+|---|---|
+| frame 400 | NES entry, both `LoadFromSram` read 0xFF |
+| frame 3511 | one `SaveToSram(0x03827200, 0x0201C000, 0x0E007FD8)`; SRAM `[0x7FD8,0x8000)` == the 40 argument bytes; that is the only write to `[0x7FB0,0x8000)` in the run |
+| quit, SoftReset, MZM boot | slot B unchanged, slot A erased, zero SRAM writes until the end of the run |
+| frame 4300 | second entry: `LoadFromSram` slot A = 0xFF, slot B = saved block; `SaveToPasswordBytes` restores `80 02 00 00 C0 42` (tail of the password) |
+| frame 5290 | PASSWORD PLEASE with the 24 characters == decode of the saved bytes (`...0A 00 00 00 00 2C 10`) |
+| control (fresh SRAM, same inputs) | both loads 0xFF, empty password, different frame hash |
+| process restart | run B loads the image run A dumped (`GbaSave` calls), same loads, same password screen, same frame hashes as the in-process run |
+| determinism | the in-process scenario twice: all 35,043 `NES3` lines identical |
+
+Limits, stated plainly: the scripted run dies before collecting anything, so the saved password is the initial state and accepting it reaches the new-game first frame (`401276D456096B86`); restored *game state* is therefore not pixel-distinguishable from a new game, and the evidence is the byte chain plus the filled-in password screen. A saved state with progress would need an input script that collects an item. NES-first start without a prior MZM boot erases the NES save (harness artefact).
+
+### Persistence backend
+
+The harness SRAM is in-memory (`GbaSave::configure_sram`); it persists across the NES quit, SoftReset and MZM boot inside one process. `runtime.cpp` loads the `.sav` with `GbaSave::load_sram_bytes` (line ~1835) and writes it when `dirty()` (line ~1941/4130). The test exercises those same `GbaSave` calls across two processes with a file, but not the shipped `MZMRecomp` host's own file handling with the NES route, so disk persistence through the host binary is not claimed.
+
+### New reviewed resume unit `SaveFileScan`
+
+A boot that loads an existing cartridge image validates it in `SramRead_All -> unk_743a4 -> unk_74574 -> unk_74624` (two checksum passes per save slot over EWRAM, text compares, BitFill repairs). That outlasts a frame and stopped a strict run at `0x08074698` (caller `0x0807457D`, frame 9). Fresh-SRAM boots never hit it. The range `[0x080743A4,0x0807478C)` (3 functions, mechanically audited, 440 instructions, 394 resume entries) is now a reviewed unit; corpus regenerated twice byte-identical (`b98a081e...`).

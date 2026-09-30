@@ -38,6 +38,7 @@
 #include "gba_ppu.h"
 #include "mzm_nes_emulator_resolver.h"
 #include "mzm_ram_dispatch.h"
+#include "bios_hle.h"
 #include "runtime_arm.h"
 #include "runtime_bus_bridge.h"
 #include "self_heal.h"
@@ -152,7 +153,63 @@ std::uint32_t g_last_sram_pc = 0;
 std::uint64_t g_apu_logged = 0;
 std::map<std::uint32_t, std::uint64_t> g_apu_regs;  // NES APU register -> writes
 bool g_audio_diag = false;
+// ---- NES save/load observation (read-only; nothing here writes guest memory) ----
+constexpr std::uint32_t kSaveToSram = 0x0203E3DCu;      // EmulatorSaveToSram(sp, src, dst)
+constexpr std::uint32_t kLoadFromSram = 0x0203E414u;    // EmulatorLoadFromSram(src, dst, sp)
+constexpr std::uint32_t kSaveToPwBytes = 0x0203E24Cu;   // EmulatorSaveToPasswordBytes(src)
+constexpr std::uint32_t kLoadFromPwBytes = 0x0203E374u; // EmulatorLoadFromPasswordBytes(sp, dst)
+constexpr std::uint32_t kPasswordBytes = 0x0203E43Cu;   // sPasswordBytes[18]
+constexpr std::uint16_t kPasswordPleaseTiles[15] = {0x19, 0x0A, 0x1C, 0x1C, 0x20, 0x18, 0x1B, 0x0D,
+                                                      0xFF, 0x19, 0x15, 0x0E, 0x0A, 0x1C, 0x0E};  // "PASSWORD PLEASE"
+constexpr std::uint32_t kSramSaveBase = 0x7FB0u;        // SRAM_BASE + 0x7FB0 (two 0x28-byte copies)
+gba::GbaBus* g_save_bus = nullptr;
+bool g_save_log = false;
+struct SaveCall {
+    const char* name;
+    std::uint64_t frame;
+    std::uint32_t r[4];
+    std::vector<std::uint8_t> payload;   // bytes the call intends to move (src for save, SRAM for load)
+};
+std::vector<SaveCall> g_save_calls;      // every call, in order
+std::size_t g_save_checked = 0;          // calls already verified at a frame boundary
+std::string hex_bytes(const std::uint8_t* p, std::size_t n) {
+    static const char* d = "0123456789ABCDEF";
+    std::string o;
+    for (std::size_t i = 0; i < n; ++i) { o += d[p[i] >> 4]; o += d[p[i] & 15]; }
+    return o;
+}
+std::vector<std::uint8_t> read_guest(std::uint32_t addr, std::size_t n) {
+    std::vector<std::uint8_t> v(n);
+    for (std::size_t i = 0; i < n; ++i) v[i] = g_save_bus->read8(addr + static_cast<std::uint32_t>(i));
+    return v;
+}
+void on_save_call(std::uint32_t pc) {
+    if (!g_save_bus) return;
+    SaveCall c{};
+    c.frame = g_log_ppu ? g_log_ppu->frame_count() : 0;
+    for (int i = 0; i < 4; ++i) c.r[i] = g_cpu.R[i];
+    switch (pc) {
+        case kSaveToSram: c.name = "SaveToSram"; c.payload = read_guest(g_cpu.R[1], 0x28); break;
+        case kLoadFromSram: {
+            c.name = "LoadFromSram";
+            const std::uint32_t src = g_cpu.R[0] ? g_cpu.R[0] : 0x0E000000u + kSramSaveBase;
+            c.payload = read_guest(src, 0x28);
+            break;
+        }
+        case kSaveToPwBytes: c.name = "SaveToPasswordBytes"; c.payload = read_guest(g_cpu.R[0] + 0x10, 18); break;
+        case kLoadFromPwBytes: c.name = "LoadFromPasswordBytes"; c.payload = read_guest(kPasswordBytes, 18); break;
+        default: return;
+    }
+    g_save_calls.push_back(c);
+    if (g_save_log)
+        std::printf("NES3 save_call %s frame=%llu r0=0x%08X r1=0x%08X r2=0x%08X lr=0x%08X payload=%s pw=%s\n",
+                    c.name, (unsigned long long)c.frame, c.r[0], c.r[1], c.r[2], g_cpu.R[14],
+                    hex_bytes(c.payload.data(), c.payload.size()).c_str(),
+                    hex_bytes(read_guest(kPasswordBytes, 18).data(), 18).c_str());
+}
 void on_function_entry(std::uint32_t pc) {
+    if (pc == kSaveToSram || pc == kLoadFromSram || pc == kSaveToPwBytes || pc == kLoadFromPwBytes)
+        on_save_call(pc);
     if (pc == 0x00000018u) ++g_irq_vector_entries;
     if (pc == kApuWrite && g_audio_diag) {
         ++g_apu_regs[g_cpu.R[0]];
@@ -241,6 +298,7 @@ int main(int argc, char** argv) {
     const std::vector<InputEvent> input = parse_input(env_or("MZM_NES_INPUT", ""));
     const std::string dump_dir = env_or("MZM_NES_FRAME_DUMP_DIR", "");
     g_audio_diag = env_or("MZM_NES_AUDIO_DIAG", "0") == "1";
+    g_save_log = env_or("MZM_NES_SAVE_LOG", "0") == "1";
 
     std::ifstream in(argv[1], std::ios::binary);
     const std::vector<std::uint8_t> rom((std::istreambuf_iterator<char>(in)), {});
@@ -269,26 +327,56 @@ int main(int argc, char** argv) {
     gbarecomp::self_heal_reset();
     mzm_install_ram_dispatch_hook();
     g_runtime_fn_entry_hook = on_function_entry;
+    g_save_bus = &bus;
 
-    // Phase A (same as NES-2): trampoline -> loader -> payload -> 0x06006558.
-    mzm_set_nes_payload_frontier_stop(true);
-    g_cpu = {};
-    g_cpu.cpsr = 0x1Fu;
-    g_cpu.R[0] = 0x08000000u;
-    g_cpu.R[15] = kTrampoline;
-    runtime_dispatch(kTrampoline);
-    require(g_cpu.R[15] == 0x087D8110u, "LZ77 did not return to loader continuation");
-    runtime_dispatch(g_cpu.R[15]);
-    for (int step = 0; step < 100; ++step) {
-        const std::uint32_t pc = g_cpu.R[15];
-        if (pc < 0x03007400u || pc >= 0x03007614u) break;
-        runtime_dispatch(pc);
+    // Loader entry (same as NES-2): trampoline -> loader -> payload -> 0x06006558.
+    // This is what MZM's OptionsNesMetroidHandler stage 4 does (IME=0, IF=FFFF,
+    // r0=ROM_BASE, call sNesEmuBootLoader); the menu path itself is gated behind
+    // gFileScreenOptionsUnlocked.soundTestAndOrigMetroid (a completed game) and
+    // is not exercised. Used for the first entry and any scheduled re-entry.
+    auto enter_nes_loader = [&]() {
+        mzm_set_nes_payload_frontier_stop(true);
+        bus.io().write16(0x208, 0);       // REG_IME = FALSE
+        bus.io().write16(0x202, 0xFFFF);  // REG_IF  = USHORT_MAX
+        bus.io().clear_halt();
+        g_cpu = {};
+        g_cpu.cpsr = 0x1Fu;
+        g_cpu.R[0] = 0x08000000u;
+        g_cpu.R[15] = kTrampoline;
+        runtime_dispatch(kTrampoline);
+        require(g_cpu.R[15] == 0x087D8110u, "LZ77 did not return to loader continuation");
+        runtime_dispatch(g_cpu.R[15]);
+        for (int step = 0; step < 100; ++step) {
+            const std::uint32_t pc = g_cpu.R[15];
+            if (pc < 0x03007400u || pc >= 0x03007614u) break;
+            runtime_dispatch(pc);
+        }
+        require(g_cpu.R[15] == kPart1Entry, "payload did not reach 0x06006558");
+        for (std::size_t i = 0; i < mzm_nes_emulator::kNumParts; ++i) {
+            const auto& spec = mzm_nes_emulator::kParts[i];
+            require(std::memcmp(region_ptr(bus, spec.start), pristine[i].data(), spec.size) == 0,
+                    "guest image differs from ROM-derived image");
+        }
+        mzm_set_nes_payload_frontier_stop(false);
+    };
+    // MZM_NES_START=mzm: cold-boot MZM from the ROM entry first (its own boot
+    // initialises its SRAM), then enter the NES at the frames in MZM_NES_ENTER_AT.
+    const bool start_mzm = env_or("MZM_NES_START", "nes") == "mzm";
+    std::vector<std::uint64_t> enter_at;
+    {
+        std::stringstream ss(env_or("MZM_NES_ENTER_AT", ""));
+        std::string t;
+        while (std::getline(ss, t, ',')) if (!t.empty()) enter_at.push_back(std::strtoull(t.c_str(), nullptr, 10));
     }
-    require(g_cpu.R[15] == kPart1Entry, "payload did not reach 0x06006558");
-    for (std::size_t i = 0; i < mzm_nes_emulator::kNumParts; ++i) {
-        const auto& spec = mzm_nes_emulator::kParts[i];
-        require(std::memcmp(region_ptr(bus, spec.start), pristine[i].data(), spec.size) == 0,
-                "guest image differs from ROM-derived image");
+    std::size_t next_enter = 0;
+    if (start_mzm) {
+        g_cpu = {};
+        g_cpu.banked_sp[ARM_BANK_SUPERVISOR] = 0x03007FE0u;
+        g_cpu.banked_sp[ARM_BANK_IRQ] = 0x03007FA0u;
+        g_cpu.banked_sp[ARM_BANK_USER] = 0x03007F00u;
+        gba::bios_hle_boot_skip(0x08000000u);   // the state the BIOS hands the cart at cold boot
+    } else {
+        enter_nes_loader();
     }
     mzm_set_nes_payload_frontier_stop(false);
     mzm_set_nes_emulator_frontier_hook(on_frontier);
@@ -303,6 +391,15 @@ int main(int argc, char** argv) {
         bus.set_write_observer(&g_p1_watch);
     }
 
+    // MZM_NES_SAVE_LOAD=<file>: start from a cartridge save written by an earlier
+    // process (runtime.cpp loads the .sav with this same GbaSave call).
+    const std::string save_load = env_or("MZM_NES_SAVE_LOAD", "");
+    if (!save_load.empty()) {
+        const auto bytes = read_file(save_load);
+        require(bus.save().load_sram_bytes(bytes.data(), bytes.size()), "MZM_NES_SAVE_LOAD: bad SRAM image");
+        bus.save().clear_dirty();
+        std::printf("NES3 save_loaded file_bytes=%zu\n", bytes.size());
+    }
     // The SRAM starts erased (0xFF); snapshot to audit guest writes.
     const std::vector<std::uint8_t> sram0 = bus.save().sram_bytes();
 
@@ -335,6 +432,8 @@ int main(int argc, char** argv) {
     std::uint64_t max_call_depth = 0, max_irq_depth = 0;
     std::uint64_t sram_write_frames = 0;
     std::vector<std::uint8_t> sram_prev = sram0;
+    const bool sram_trace = env_or("MZM_NES_SRAM_TRACE", "0") == "1";
+    const std::uint64_t sram_every = sram_trace ? 1 : 30;
 
     struct TraceEnt { std::uint64_t frame; std::uint32_t pc, lr, sp, cpsr; };
     std::vector<TraceEnt> trace_ring(24);
@@ -386,6 +485,36 @@ int main(int argc, char** argv) {
                     bus.io().read16(0x130), (unsigned long long)fb_hash());
         std::fflush(stdout);
     };
+    auto sram_report = [&](const char* tag, std::uint64_t frame) {
+        const auto now = bus.save().sram_bytes();
+        std::printf("NES3 sram %s frame=%llu hash=%016llX nes_slot_a=%s nes_slot_b=%s mzm_check=%s\n", tag,
+                    (unsigned long long)frame, (unsigned long long)fnv(now.data(), now.size()),
+                    hex_bytes(now.data() + 0x7FB0, 0x28).c_str(), hex_bytes(now.data() + 0x7FD8, 0x28).c_str(),
+                    hex_bytes(now.data() + 0x7F80, 16).c_str());
+    };
+    auto nes_report = [&](std::uint64_t frame) {
+        // sPasswordBytes and the password screen's 24 character tiles
+        // (nametable 0x06002000, entries 0x109+{0..5,7..12,0x40..0x45,0x47..0x4C}).
+        const std::vector<std::uint8_t> pw = read_guest(kPasswordBytes, 18);
+        const std::uint16_t* nt = reinterpret_cast<const std::uint16_t*>(bus.vram_ptr() + 0x2000);
+        std::string chars;
+        char b[8];
+        static const int idx[24] = {0,1,2,3,4,5, 7,8,9,10,11,12, 0x40,0x41,0x42,0x43,0x44,0x45, 0x47,0x48,0x49,0x4A,0x4B,0x4C};
+        for (int i = 0; i < 24; ++i) { std::snprintf(b, sizeof b, "%02X", nt[0x109 + idx[i]] & 0xFF); chars += b; }
+        const bool pw_screen = std::memcmp(nt + 0xA8, kPasswordPleaseTiles, sizeof kPasswordPleaseTiles) == 0;
+        std::printf("NES3 nes_password frame=%llu pw_please_screen=%d password_bytes=%s screen_chars=%s\n",
+                    (unsigned long long)frame, pw_screen ? 1 : 0, hex_bytes(pw.data(), 18).c_str(), chars.c_str());
+    };
+    // NON-QUALIFYING corruption control (MZM_NES_CORRUPT_SRAM="frame:offset:xormask" in hex/dec):
+    // flips one byte of the harness' local SRAM copy. Never set by the qualifying runs.
+    std::uint64_t corrupt_frame = ~0ull; std::uint32_t corrupt_off = 0; std::uint32_t corrupt_xor = 0;
+    {
+        const std::string c = env_or("MZM_NES_CORRUPT_SRAM", "");
+        if (!c.empty()) {
+            unsigned long long f; unsigned o, x;
+            if (std::sscanf(c.c_str(), "%llu:%x:%x", &f, &o, &x) == 3) { corrupt_frame = f; corrupt_off = o; corrupt_xor = x; }
+        }
+    }
     // Frame-boundary work: input injection, audio capture window, sampling.
     auto on_new_frame = [&](std::uint64_t frame) {
         // Diagnostic (MZM_NES_DIAG_FRAMES="from,count"): guest state at each frame boundary.
@@ -393,6 +522,19 @@ int main(int argc, char** argv) {
             std::printf("NES3 diag frame=%llu pc=0x%08X cpsr=0x%08X r0=0x%08X r1=0x%08X vcount=%u dispstat=0x%04X halted=%d\n",
                         (unsigned long long)frame, g_cpu.R[15], g_cpu.cpsr, g_cpu.R[0], g_cpu.R[1],
                         (unsigned)ppu.vcount(), (unsigned)bus.read16(0x04000004u), bus.io().halted() ? 1 : 0);
+        // Verify save/load calls of the previous frame against what they intended to move.
+        for (; g_save_checked < g_save_calls.size(); ++g_save_checked) {
+            const SaveCall& c = g_save_calls[g_save_checked];
+            const std::string n = c.name;
+            if (n == "SaveToSram") {
+                const auto sram = bus.save().sram_bytes();
+                const std::uint32_t off = c.r[2] - 0x0E000000u;
+                const bool ok = off + 0x28 <= sram.size() &&
+                                std::memcmp(sram.data() + off, c.payload.data(), 0x28) == 0;
+                std::printf("NES3 save_verify SaveToSram call_frame=%llu sram_off=0x%04X bytes_match=%d\n",
+                            (unsigned long long)c.frame, off, ok ? 1 : 0);
+            }
+        }
         // Input: same set_keyinput call as the production loop, one poll/frame.
         std::uint16_t pressed = 0;
         for (const auto& e : input)
@@ -456,10 +598,20 @@ int main(int argc, char** argv) {
             if (mh != last_mem_hash) { ++mem_changes; last_mem_hash = mh; }
         }
         // SRAM audit (cheap: compare every 30 frames).
-        if (frame % 30 == 0) {
+        if (frame % sram_every == 0) {
             const auto now = bus.save().sram_bytes();
             if (now != sram_prev) {
                 ++sram_write_frames;
+                if (sram_trace) {
+                    for (std::size_t o = 0; o < now.size();) {
+                        if (now[o] == sram_prev[o]) { ++o; continue; }
+                        std::size_t e = o;
+                        while (e < now.size() && now[e] != sram_prev[e]) ++e;
+                        std::printf("NES3 sram_range frame=%llu [0x%04zX,0x%04zX) %zu bytes\n",
+                                    (unsigned long long)frame, o, e, e - o);
+                        o = e;
+                    }
+                }
                 for (std::size_t o = 0; o < now.size(); ++o)
                     if (now[o] != sram_prev[o]) {
                         std::printf("NES3 sram_write frame=%llu off=0x%04zX 0x%02X->0x%02X\n",
@@ -483,6 +635,7 @@ int main(int argc, char** argv) {
         }
         if (hash_frames.count(frame)) {
             checkpoint("hash", frame);
+            if (env_or("MZM_NES_SRAM_REPORT", "0") == "1") { sram_report("hash", frame); nes_report(frame); }
             std::printf("NES3 hashinfo frame=%llu mem=%016llX audio_samples=%llu audio_hash=%016llX\n",
                         (unsigned long long)frame, (unsigned long long)mem_hash(),
                         (unsigned long long)gen, (unsigned long long)audio_hash);
@@ -508,6 +661,23 @@ int main(int argc, char** argv) {
                 prev_frame = frame;
                 on_new_frame(frame);
                 if (!strict_ok()) { stalled = true; stall_pc = g_cpu.R[15]; break; }
+            }
+            if (frame >= corrupt_frame && corrupt_frame != ~0ull && !bus.io().halted()) {
+                const std::uint8_t before = bus.save().sram_read(corrupt_off);
+                bus.save().sram_write(corrupt_off, static_cast<std::uint8_t>(before ^ corrupt_xor));
+                std::printf("NES3 CORRUPTION_CONTROL (non-qualifying) frame=%llu sram[0x%04X] 0x%02X->0x%02X\n",
+                            (unsigned long long)frame, corrupt_off, before,
+                            (unsigned)bus.save().sram_read(corrupt_off));
+                corrupt_frame = ~0ull;
+            }
+            if (next_enter < enter_at.size() && frame >= enter_at[next_enter] && !bus.io().halted()) {
+                sram_report("pre_enter", frame);
+                std::printf("NES3 enter_nes frame=%llu (loader entry, as OptionsNesMetroidHandler stage 4)\n",
+                            (unsigned long long)frame);
+                enter_nes_loader();
+                ++next_enter;
+                no_progress = 0;
+                continue;
             }
             if (bus.io().halted()) {
                 std::uint32_t budget = gba::GbaPpu::kCyclesPerFrame;
@@ -694,6 +864,17 @@ int main(int argc, char** argv) {
         const std::uintptr_t low = mzm_ram_dispatch_stack_low();
         std::printf("NES3 host_stack limit=%llu hook_depth_bytes=%llu\n", (unsigned long long)rl.rlim_cur,
                     low == ~static_cast<std::uintptr_t>(0) ? 0ull : (unsigned long long)(stack_base - low));
+    }
+    {
+        const std::string save_dump = env_or("MZM_NES_SAVE_DUMP", "");
+        if (!save_dump.empty()) {
+            const auto bytes = bus.save().sram_bytes();
+            std::ofstream o(save_dump, std::ios::binary);
+            o.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            std::printf("NES3 save_dumped bytes=%zu hash=%016llX\n", bytes.size(),
+                        (unsigned long long)fnv(bytes.data(), bytes.size()));
+        }
+        sram_report("end", ppu.frame_count());
     }
     std::printf("NES3 strict dispatch_misses=%llu interpreted_insns=%llu unmapped=%llu "
                 "io_unhandled=%llu self_heal=disabled\n", (unsigned long long)m,
