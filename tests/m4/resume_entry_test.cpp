@@ -44,6 +44,33 @@ int main() {
               runtime_has_static_entry(0x080027F4u, 1) == 0,
           "literal pool words are not published");
     check(runtime_has_static_entry(0x080027F8u, 1) == 1, "the next function (DoSoundAction) is unchanged");
+    std::printf("== BitFill [0x080032B4,0x08003380) static entries (M4-RESUME-2)\n");
+    check(runtime_has_static_entry(0x080032B4u, 1) == 1, "root 0x080032B4 Thumb is an entry");
+    check(runtime_has_static_entry(0x0800331Au, 1) == 1, "0x0800331A (ldr after the DMA start, frontier) resumes");
+    check(runtime_has_static_entry(0x0800331Au, 0) == 0, "wrong mode: 0x0800331A is not an ARM entry");
+    check(runtime_has_static_entry(0x080032E2u, 1) == 0 && runtime_has_static_entry(0x080032E4u, 1) == 0 &&
+              runtime_has_static_entry(0x08003328u, 1) == 0 && runtime_has_static_entry(0x0800333Cu, 1) == 0,
+          "the literal pools inside BitFill are not published");
+    check(runtime_has_static_entry(0x08003380u, 1) == 1, "the next function (DMA2IntrCode) is unchanged");
+    // Frontier rows added one reviewed unit at a time (M4-RESUME-2): the unit root
+    // stays an entry, the PC where a VBlank yield first landed now resumes, in the
+    // Thumb mode only.
+    struct Row { const char* unit; std::uint32_t root, frontier; };
+    static const Row rows[] = {
+        {"RoomSetInitialTilemap", 0x08056B28u, 0x08056C50u},
+        {"RoomRleDecompress", 0x08056D18u, 0x08056D90u},
+        {"InitAndLoadGenerics", 0x0800CBACu, 0x0800CC68u},
+    };
+    for (const Row& r : rows) {
+        std::printf("== %s frontier 0x%08X\n", r.unit, r.frontier);
+        char msg[96];
+        std::snprintf(msg, sizeof msg, "%s root 0x%08X is still an entry", r.unit, r.root);
+        check(runtime_has_static_entry(r.root, 1) == 1, msg);
+        std::snprintf(msg, sizeof msg, "%s 0x%08X resumes (Thumb)", r.unit, r.frontier);
+        check(runtime_has_static_entry(r.frontier, 1) == 1, msg);
+        std::snprintf(msg, sizeof msg, "%s 0x%08X is not an ARM entry", r.unit, r.frontier);
+        check(runtime_has_static_entry(r.frontier, 0) == 0, msg);
+    }
     std::printf("M4-RESUME-1 entries %s (%d failures)\n", g_failures ? "FAIL" : "PASS", g_failures);
     return g_failures ? 1 : 0;
 }
