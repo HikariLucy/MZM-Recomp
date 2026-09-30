@@ -684,3 +684,18 @@ After the restart IWRAM holds MZM code where NES Part 2 lived, so the Part 2 byt
 ### Host stack, validation
 
 Hook high-water 5,768,016 bytes, unchanged. CTest 65/65, Python 37/37 (`tests/`, includes `test_resume.py`), harness 01/02/03 PASS, `mzm-nes-behavior` (qualify) PASS, soak 2 x 10,000 frames identical and strict-clean, `git diff --check` PASS, GBARecomp unchanged at `2c40fe8`. Audio (FIFO DMA gap) and save/load round trip are unchanged and out of scope.
+
+## HOST-STACK-2 Tail dispatch (2026-09-30): PASS
+
+GBARecomp `2bad2d8` (branch `mzm/tail-dispatch` on `2c40fe8`; `arm-recomp-core` `efbfe13`) emits `runtime_dispatch_tail(target); return;` for guest transfers that never return to the next instruction (`b`, `bx`, `ldr pc`, `mov pc`, `ldm {..pc}` that miss the call-return stack, function fall-through). `runtime_dispatch` is the driver: it drains the transfers published on its level one at a time through the normal dispatch path (per-PC hooks, RAM/private resolvers, byte gates). `bl` stays a driver call; a `bl` entered by a direct host call is followed by `runtime_tail_drain()`.
+
+MZM changes: pin `2bad2d8`; `mzm_ram_dispatch` drains after the observed stack helper so the exit event sees the helper's real exit state (`SramCheckInternal` returned non-zero before this; found by `mzm-nes-behavior`); the synthetic `host_stack_dispatch_test` now uses the tail shape (`--legacy-recursive` keeps the old one) and is CTest `mzm-host-stack-dispatch` (`--bounded`, < 256 KiB).
+
+| | before (`2c40fe8`) | after (`2bad2d8`) |
+|---|---|---|
+| synthetic 30,000 transfers | 6,720,320 B (linear) | 320 B (flat) |
+| NES hook high-water, 100 / 1000 / 6000 / 10000 frames | 5,768,016 B | 446,480 B at all four |
+| stack limit | passes 8192..5888 KB, segfault 5632 KB | passes 8192..576 KB, segfault 512 KB |
+| wall, no-input, A/B same machine: 100 / 1000 / 6000 / 10000 frames | 4.75 / 45.6 / 274.6 / 477.6 s | 4.07 / 41.4 / 247.5 / 406.9 s |
+
+The NES no longer needs an extraordinary stack reserve (Windows default 1 MB has ~2x margin). Corpus regenerated twice: byte-identical. CTest 67/67, Python 37/37, harness 01/02/03 PASS, soak 2 x 10,000 identical, scripted NES -> death -> save -> quit -> SoftReset -> MZM: title frame 3500 `FC3C48FE5B3F402B`, gameplay visible at 5500, strict counters zero, Part 2 gate fails closed after the reset (`verify_fail` 3,043,560, `invoke_fail=0`, `no_corpus=0`).

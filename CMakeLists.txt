@@ -24,7 +24,7 @@ if(NOT EXISTS "${GBARECOMP_ROOT}/CMakeLists.txt")
 endif()
 
 # The source path is supplied by the builder; the revision is immutable.
-set(MZM_GBARECOMP_PIN "2c40fe8539c566ce2aee7dce8a722917a6cf475c"
+set(MZM_GBARECOMP_PIN "2bad2d8e83f36e8fb9f509f5ddce0eb8f4127f09"
     CACHE STRING "Exact GBARecomp revision for this build")
 execute_process(COMMAND git -C "${GBARECOMP_ROOT}" rev-parse HEAD
     OUTPUT_VARIABLE MZM_GBARECOMP_HEAD OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -216,6 +216,20 @@ if(BUILD_TESTING)
                 "-Wl,--start-group" gbarecomp_runtime gbarecomp_debug
                 gbarecomp_gba gbarecomp_armv4t "-Wl,--end-group")
             add_test(NAME mzm-resume-entry COMMAND mzm_resume_entry_test)
+
+            add_executable(mzm_host_stack_dispatch_test
+                tests/m4/host_stack_dispatch_test.cpp
+                $<TARGET_OBJECTS:mzm_generated_objects>)
+            target_include_directories(mzm_host_stack_dispatch_test PRIVATE
+                src generated
+                "${GBARECOMP_ROOT}/src/armv4t"
+                "${GBARECOMP_ROOT}/src/gba"
+                "${GBARECOMP_ROOT}/src/runtime")
+            target_link_libraries(mzm_host_stack_dispatch_test PRIVATE
+                "-Wl,--start-group" gbarecomp_runtime gbarecomp_debug
+                gbarecomp_gba gbarecomp_armv4t "-Wl,--end-group")
+            add_test(NAME mzm-host-stack-dispatch
+                COMMAND mzm_host_stack_dispatch_test --bounded)
 
             add_executable(mzm_nes_behavior_test
                 tests/m4/nes_behavior_test.cpp

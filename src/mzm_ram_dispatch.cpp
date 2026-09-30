@@ -188,6 +188,9 @@ __attribute__((noinline)) static void run_stack_helper(std::size_t i, std::uint3
                                    g_cpu.R[2], g_cpu.R[3], g_cpu.R[13], g_cpu.R[14]};
         s_stack_helper_observer(e);
         kStackHelpers[i].native_fn();
+        // The helper's closing `bx lr` is published as a tail transfer; finish
+        // it here so the exit event observes the helper's real exit state.
+        runtime_tail_drain();
         e.exit = true;
         e.r0 = g_cpu.R[0]; e.r1 = g_cpu.R[1]; e.r2 = g_cpu.R[2]; e.r3 = g_cpu.R[3];
         e.sp = g_cpu.R[13]; e.lr = g_cpu.R[14];
