@@ -44,6 +44,40 @@ start = 0x06006700
 end = 0x06006702
 note = "font setup strh overwrites a code halfword (BG screenblock 12 entry)"
 
+# Verification scopes (MZM-side byte-gate policy only; never reaches the
+# GBARecomp config, Part 1 stays ONE executable image, "nes_part1").
+#
+# A scope names the guest bytes that must still equal the ROM-derived bytes
+# before a PC inside the scope's ranges may run natively. Scopes tile the
+# image. `requires` lists DIRECT static transfers (bl/b, pc-relative literal
+# and table references) that leave the scope: generated code follows them
+# without going through the resolver, so the required scopes are verified too.
+# The runtime uses the transitive closure. `lifecycle` and the mutation notes
+# are runtime evidence (NES-3b), not derivable from the ELF.
+#
+# Part 1 lifecycle: the init half is overwritten by NES graphics (VRAM tiles)
+# from frame 12 on, over and over; bytes 0x06006E00.. are never stored to.
+[[image.scope]]
+id = "init"
+ranges = [[0x06006000, 0x06006E00]]
+requires = ["resident"]
+lifecycle = "overwritten-after-init"
+note = "init code + tables + 0x408 zero block; graphics overwrite [0x06006000,0x06006DC0) from frame 12; init calls resident handlers directly"
+
+[[image.scope]]
+id = "resident"
+ranges = [[0x06006E00, 0x0600713C], [0x06007210, 0x06007240]]
+requires = []
+lifecycle = "resident"
+note = "PPU text/tile handlers sub_06006E08, sub_06006FB0, input poll sub_06007210 with their literal pools and tables; never stored to; no transfer leaves the scope"
+
+[[image.scope]]
+id = "menu"
+ranges = [[0x0600713C, 0x06007210]]
+requires = ["init", "resident"]
+lifecycle = "overwritten-after-init"
+note = "sub_0600713C emulator menu/error screen: tail-branches to init code 0x06006880/0x06006968, so it inherits the init lifecycle"
+
 [[image]]
 id = "nes_part2"
 part = "part2"
@@ -572,3 +606,8 @@ seeds_thumb = [
   0x0203E8C0, 0x0203E8C4, 0x0203E8C8, 0x0203E8CC, 0x0203E8D0, 0x0203E8D4,
   0x0203E8D8, 0x0203E8DC,
 ]
+
+[[image.mutable]]
+start = 0x0203E43C
+end = 0x0203E44E
+note = "sPasswordBytes[18] writable .data buffer filled by the password/save code (MemoryCopy); first store frame 3068"

@@ -58,6 +58,8 @@ struct DispatchStats {
     std::uint64_t nes_matches = 0;
     std::uint64_t nes_frontier_hits = 0;
     mzm_nes_emulator_part_stats_t nes_part[mzm_nes_emulator::kNumParts] = {};
+    mzm_nes_emulator_scope_stats_t nes_scope[mzm_nes_emulator::kNumParts]
+                                            [mzm_nes_emulator::kMaxScopes] = {};
     std::uint64_t variant_hits[mzm_haze::kTemplates.size()] = {};
     bool trace = false;
     bool capture_requested = false;
@@ -90,6 +92,52 @@ static int s_nes_last_part = -1;
 static void (*s_nes_frontier_hook)(const mzm_nes_emulator_event_t&) = nullptr;
 static bool s_nes_payload_frontier_stop = false;
 
+// Entry gate for one NES emulator PC: the owning scope and its requires
+// closure must match the ROM-derived bytes. Returns the first failing scope,
+// -1 if all verified, -2 if `pc` belongs to no scope.
+// Deliberately out of line: the generated Part 2 code recurses natively through
+// this hook thousands of frames deep, so this frame's locals (byte snapshots,
+// lambda) must not stay live across the native call.
+__attribute__((noinline)) static int nes_verify_entry(
+    mzm_nes_emulator::ImageKind emu_kind, const mzm_nes_emulator::ImageSpec& spec,
+    std::uint32_t pc, int own_scope) {
+    (void)pc;
+    if (own_scope < 0) return -2;
+    // Fast path: live bytes identical to a previously SHA-verified copy.
+    static std::vector<std::uint8_t> snapshots[mzm_nes_emulator::kNumParts]
+                                              [mzm_nes_emulator::kMaxScopes];
+    const std::uint8_t* live = nullptr;
+    if (auto* bus = gbarecomp::active_bus()) {
+        switch (spec.start >> 24) {
+            case 0x02: live = bus->ewram_ptr() + (spec.start & 0x3FFFFu); break;
+            case 0x03: live = bus->iwram_ptr() + (spec.start & 0x7FFFu); break;
+            case 0x06: live = bus->vram_ptr() + (spec.start - 0x06000000u); break;
+            default: break;
+        }
+    }
+    auto scope_ok = [&](std::size_t i) {
+        const auto& sc = spec.scopes[i];
+        auto& snapshot = snapshots[static_cast<std::size_t>(emu_kind)][i];
+        if (live && mzm_nes_emulator::matches_snapshot(spec, sc, live, snapshot))
+            return true;
+        snapshot.clear();
+        if (!mzm_nes_emulator::verify_scope(
+                sc, [](std::uint32_t a) { return bus_read_u8(a); }))
+            return false;
+        for (std::size_t r = 0; r < sc.gate_count; ++r)
+            for (std::uint32_t a = sc.gate[r].start; a < sc.gate[r].end; ++a)
+                snapshot.push_back(bus_read_u8(a));
+        return true;
+    };
+    // The entry scope first: it is the one a stale image must reject.
+    if (!scope_ok(static_cast<std::size_t>(own_scope))) return own_scope;
+    for (std::size_t i = 0; i < spec.scope_count; ++i)
+        if (static_cast<int>(i) != own_scope &&
+            (spec.scopes[own_scope].requires_mask >> i & 1u) && !scope_ok(i))
+            return static_cast<int>(i);
+    return -1;
+}
+
 int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
     ++g_stats.hook_calls;
 
@@ -115,36 +163,31 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
         const auto& spec = mzm_nes_emulator::spec_of(emu_kind);
         auto& st = g_stats.nes_part[static_cast<std::size_t>(emu_kind)];
         ++st.attempts;
-        // Fast path: live bytes identical to a previously SHA-verified copy.
-        static std::vector<std::uint8_t> snapshots[mzm_nes_emulator::kNumParts];
-        auto& snapshot = snapshots[static_cast<std::size_t>(emu_kind)];
-        const std::uint8_t* live = nullptr;
-        if (auto* bus = gbarecomp::active_bus()) {
-            switch (spec.start >> 24) {
-                case 0x02: live = bus->ewram_ptr() + (spec.start & 0x3FFFFu); break;
-                case 0x03: live = bus->iwram_ptr() + (spec.start & 0x7FFFu); break;
-                case 0x06: live = bus->vram_ptr() + (spec.start - 0x06000000u); break;
-                default: break;
-            }
-        }
-        bool verified = live && mzm_nes_emulator::matches_snapshot(spec, live, snapshot);
-        if (!verified) {
-            verified = mzm_nes_emulator::verify_image(
-                spec, [](std::uint32_t a) { return bus_read_u8(a); });
-            snapshot.clear();
-            if (verified) {
-                for (std::size_t r = 0; r < spec.gate_count; ++r)
-                    for (std::uint32_t a = spec.gate[r].start; a < spec.gate[r].end; ++a)
-                        snapshot.push_back(bus_read_u8(a));
-            }
+        // The entry PC selects its verification scope; the scope and the scopes
+        // it requires (direct transfers generated code follows without this
+        // resolver) must all match the ROM-derived bytes.
+        const int own_scope = mzm_nes_emulator::scope_of(spec, pc);
+        auto* ss = own_scope >= 0
+                       ? &g_stats.nes_scope[static_cast<std::size_t>(emu_kind)]
+                                           [static_cast<std::size_t>(own_scope)]
+                       : nullptr;
+        if (ss) ++ss->attempts;
+        const int failed_scope = nes_verify_entry(emu_kind, spec, pc, own_scope);
+        const bool verified = failed_scope == -1;
+        if (ss) {
+            if (verified) ++ss->verified;
+            else if (failed_scope == own_scope) ++ss->verify_failures;
+            else ++ss->dependency_failures;
         }
         if (!verified) {
             ++st.verify_failures;
             if (g_stats.trace) {
                 std::fprintf(stderr,
                              "mzm_ram_dispatch kind=nes_emulator part=%s "
-                             "runtime_pc=0x%08x mode=%s verify=FAIL\n",
-                             spec.name, pc, thumb ? "thumb" : "arm");
+                             "runtime_pc=0x%08x mode=%s scope=%s verify=FAIL failed_scope=%s\n",
+                             spec.name, pc, thumb ? "thumb" : "arm",
+                             own_scope >= 0 ? spec.scopes[own_scope].id : "none",
+                             failed_scope >= 0 ? spec.scopes[failed_scope].id : "none");
             }
         } else {
             ++st.verified;
@@ -165,6 +208,7 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
                 // Counted at entry, not on return: the native body may unwind
                 // through a frontier observer with this dispatch still in flight.
                 ++st.matches;
+                if (ss) ++ss->matches;
                 if (g_stats.trace) {
                     std::fprintf(stderr,
                                  "mzm_ram_dispatch kind=nes_emulator part=%s "
@@ -192,6 +236,7 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
                     return 1;
                 }
                 --st.matches;
+                if (ss) --ss->matches;
                 ++st.invoke_failures;
                 reason = "no_private_entry";
             }
@@ -370,6 +415,20 @@ std::size_t mzm_nes_emulator_part_stats(mzm_nes_emulator_part_stats_t* out,
     for (std::size_t i = 0; i < n; ++i) {
         out[i] = g_stats.nes_part[i];
         out[i].name = mzm_nes_emulator::kParts[i].name;
+    }
+    return n;
+}
+
+std::size_t mzm_nes_emulator_scope_stats(mzm_nes_emulator_scope_stats_t* out,
+                                         std::size_t capacity) {
+    std::size_t n = 0;
+    for (std::size_t p = 0; p < mzm_nes_emulator::kNumParts; ++p) {
+        const auto& spec = mzm_nes_emulator::kParts[p];
+        for (std::size_t i = 0; i < spec.scope_count && n < capacity; ++i, ++n) {
+            out[n] = g_stats.nes_scope[p][i];
+            out[n].part = spec.name;
+            out[n].scope = spec.scopes[i].id;
+        }
     }
     return n;
 }

@@ -79,14 +79,60 @@ MUTABLE_OBSERVED = {
     # state pointer written by the NES core and read by the IRQ handler
     # sub_030057A8 (`ldr r0,sUnk_03005808`). Observed dirty at 0x03005809/0B.
     "part2": [(0x03005808, 0x0300580C)],
+    # Part 6 (EWRAM): `u8 sPasswordBytes[18]` (nes_metroid/emulator/src/part6.c,
+    # first object of part6.o .data, initialised to zero, i.e. the 18-byte zero
+    # run 0x0203E43C..0x0203E44E of the image). MemoryCopy() fills it when the
+    # password/save code runs; NES-3b observed the first stores at frame 3068
+    # (writer 0x0203E31C). Only these 18 bytes: the rest of the .data (text and
+    # tables) is never stored to and stays gated.
+    "part6": [(0x0203E43C, 0x0203E44E)],
 }
 for _name, _runs in MUTABLE_OBSERVED.items():
     MUTABLE_DATA.setdefault(_name, []).extend(_runs)
+
+# Verification scopes (MZM byte-gate policy, NES-3b). Lifecycle is RUNTIME
+# evidence (tests/m4/nes_behavior_test.cpp MZM_NES_WATCH_IMAGE_WRITES): Part 1 bytes
+# [0x06006000,0x06006DC0) are overwritten by NES graphics from frame 12 on; no
+# store ever touches 0x06006DC0.. . The ELF only proves that each boundary is a
+# real symbol (0x06006E00 = literal pool of sub_06006E08, 0x0600713C =
+# sub_0600713C, 0x06007210 = sub_06007210); --compare checks that and nothing
+# more. The requires edges are checked against the bytes by
+# tests/m4/test_nes_map.py (direct b/bl and pc-relative references).
+SCOPES = {
+    "part1": [
+        {"id": "init", "ranges": [(0x06006000, 0x06006E00)], "requires": ["resident"],
+         "lifecycle": "overwritten-after-init",
+         "note": "init code + tables + 0x408 zero block; graphics overwrite [0x06006000,0x06006DC0) from frame 12; init calls resident handlers directly"},
+        {"id": "resident", "ranges": [(0x06006E00, 0x0600713C), (0x06007210, 0x06007240)],
+         "requires": [], "lifecycle": "resident",
+         "note": "PPU text/tile handlers sub_06006E08, sub_06006FB0, input poll sub_06007210 with their literal pools and tables; never stored to; no transfer leaves the scope"},
+        {"id": "menu", "ranges": [(0x0600713C, 0x06007210)], "requires": ["init", "resident"],
+         "lifecycle": "overwritten-after-init",
+         "note": "sub_0600713C emulator menu/error screen: tail-branches to init code 0x06006880/0x06006968, so it inherits the init lifecycle"},
+    ],
+}
+
+SCOPE_COMMENT = [
+    '# Verification scopes (MZM-side byte-gate policy only; never reaches the',
+    '# GBARecomp config, Part 1 stays ONE executable image, "nes_part1").',
+    '#',
+    '# A scope names the guest bytes that must still equal the ROM-derived bytes',
+    "# before a PC inside the scope's ranges may run natively. Scopes tile the",
+    '# image. `requires` lists DIRECT static transfers (bl/b, pc-relative literal',
+    '# and table references) that leave the scope: generated code follows them',
+    '# without going through the resolver, so the required scopes are verified too.',
+    '# The runtime uses the transitive closure. `lifecycle` and the mutation notes',
+    '# are runtime evidence (NES-3b), not derivable from the ELF.',
+    '#',
+    '# Part 1 lifecycle: the init half is overwritten by NES graphics (VRAM tiles)',
+    '# from frame 12 on, over and over; bytes 0x06006E00.. are never stored to.',
+]
 
 MUTABLE_NOTES = {
     ("part1", 0x06006700): "font setup strh overwrites a code halfword (BG screenblock 12 entry)",
     ("part2", 0x03002330): "writable .data of part2.o and part2_handwritten.o (linker map)",
     ("part2", 0x03005808): "sUnk_03005808 emulator state pointer, observed dirty at runtime",
+    ("part6", 0x0203E43C): "sPasswordBytes[18] writable .data buffer filled by the password/save code (MemoryCopy); first store frame 3068",
 }
 
 
@@ -189,6 +235,7 @@ def derive(elf, parts_dir, wanted):
             "sha256": sha,
             "runs": [(a, b, mode[k]) for a, b, k in runs],
             "seeds": seeds,
+            "sym_addrs": sym_addrs,
         })
     return result
 
@@ -221,6 +268,14 @@ def emit_canonical(result):
         for a, b in sorted(MUTABLE_DATA.get(name, [])):
             out += ["", "[[image.mutable]]", f"start = 0x{a:08X}", f"end = 0x{b:08X}",
                     f'note = "{MUTABLE_NOTES[(name, a)]}"']
+        if SCOPES.get(name):
+            out += [""] + SCOPE_COMMENT
+        for k, sc in enumerate(SCOPES.get(name, [])):
+            rng = ", ".join(f"[0x{a:08X}, 0x{b:08X}]" for a, b in sc["ranges"])
+            req = ", ".join(f'"{r}"' for r in sc["requires"])
+            out += ([] if k == 0 else [""]) + ["[[image.scope]]", f'id = "{sc["id"]}"', f"ranges = [{rng}]",
+                    f"requires = [{req}]", f'lifecycle = "{sc["lifecycle"]}"',
+                    f'note = "{sc["note"]}"']
         out += [""]
     return "\n".join(out)
 
@@ -247,6 +302,27 @@ def compare(result, canonical_path):
         ds = set(img["seeds"])
         problems += [f'{img["part"]}: seed only in canonical 0x{a:08X} {m}' for a, m in sorted(cs - ds)]
         problems += [f'{img["part"]}: seed only in derived 0x{a:08X} {m}' for a, m in sorted(ds - cs)]
+        problems += compare_scopes(img, c)
+    return problems
+
+
+def compare_scopes(img, canon):
+    """Scopes are canonical-map policy. The ELF can only prove that every internal
+    boundary is a symbol; the ranges must equal the maintainer table (SCOPES)."""
+    name = img["part"]
+    want = SCOPES.get(name, [])
+    have = canon.get("scope", [])
+    problems = []
+    norm = lambda sc: (sc["id"], sorted(tuple(r) for r in sc["ranges"]),
+                       list(sc.get("requires", [])), sc.get("lifecycle"))
+    if sorted(norm(x) for x in want) != sorted(norm(x) for x in have):
+        problems.append(f"{name}: scopes differ from the maintainer table SCOPES")
+    lo, hi = img["load_address"], img["load_address"] + img["size"]
+    for sc in have:
+        for a, b in sc["ranges"]:
+            for edge in (a, b):
+                if lo < edge < hi and edge not in img["sym_addrs"]:
+                    problems.append(f'{name}: scope {sc["id"]} boundary 0x{edge:08X} is not an ELF symbol')
     return problems
 
 

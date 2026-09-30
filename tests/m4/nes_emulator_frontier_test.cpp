@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
         };
         require(mzm_nes_emulator::verify_image(spec, reader(-1)),
                 "gate rejects the exact ROM-derived image");
-        require(!mzm_nes_emulator::verify_image(spec, reader(spec.gate[0].start)),
+        require(!mzm_nes_emulator::verify_image(spec, reader(spec.scopes[0].gate[0].start)),
                 "gate accepts a flipped gated byte");
     }
     {

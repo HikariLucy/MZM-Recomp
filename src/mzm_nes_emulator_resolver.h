@@ -14,9 +14,16 @@
 // guest address. A PC inside a Part's address range is executed natively only
 // if the *live* guest bytes of that Part hash to the ROM-derived digest.
 //
-// Gate scope: the whole image minus runs proven mutable by runtime evidence
-// (see MUTABLE_DATA in scripts/derive-nes-emulator-map.py). Literal pools are
-// gated because generated code bakes their values in as constants.
+// Gate scope: each image is tiled by one or more verification scopes (canonical
+// map [[image.scope]]; Parts without explicit scopes have one scope, "image").
+// A scope's gate is its ranges minus runs proven mutable by runtime evidence.
+// Literal pools are gated because generated code bakes their values in as
+// constants. A PC selects its scope; the scope's `requires` closure (direct
+// transfers that generated code follows without the resolver) is verified too.
+// Part 1 has init/resident/menu scopes: the init half is overwritten by
+// graphics after boot, so init and menu PCs fail closed from then on while
+// resident PCs keep running (NES-3b). Being verified once never allows a PC
+// whose own scope bytes no longer match.
 //
 // Lifecycle: there is deliberately NO permanent "verified" latch. The bus
 // exposes no write notification, so a cached verdict could go stale if guest
@@ -34,34 +41,31 @@ enum class ImageKind : int {
     Part6,
 };
 constexpr std::size_t kNumParts = 6;
+constexpr std::size_t kMaxScopes = 4;   // generator MAX_SCOPES
 
 struct ImageSpec {
     ImageKind kind;
     const char* name;
     std::uint32_t start;
     std::size_t size;
-    const CodeRun* gate;
-    std::size_t gate_count;
-    const char* gate_sha256;
-    // SHA-256 of the first kPrefilterBytes gated bytes: a cheap first stage so
-    // a PC that merely lies in the Part's address range (Part 2 aliases MZM's
-    // own IWRAM code) does not pay a full-image hash.
-    const char* prefilter_sha256;
+    const ScopeSpec* scopes;
+    std::size_t scope_count;
     // False when no AOT corpus exists for this Part. Such a Part is only
     // *identified*, never run.
     bool has_corpus;
     // Only classify this Part when a frontier observer is installed.
     bool observer_only;
 };
+// Each scope's `prefilter_sha256` covers its first kPrefilterBytes gated bytes:
+// a cheap first stage so a PC that merely lies in the Part's address range
+// (Part 2 aliases MZM's own IWRAM code) does not pay a full-scope hash.
 constexpr std::size_t kPrefilterBytes = 32;
 
 #define MZM_NES_PART(kind, name, start, size, has_corpus, observer_only)     \
     ImageSpec{ImageKind::kind, #name, start, size,                           \
-              mzm_nes_emulator::k_##name##_gate,                             \
-              sizeof(mzm_nes_emulator::k_##name##_gate) / sizeof(CodeRun),   \
-              mzm_nes_emulator::k_##name##_gate_sha256,                      \
-              mzm_nes_emulator::k_##name##_prefilter_sha256, has_corpus,     \
-              observer_only}
+              mzm_nes_emulator::k_##name##_scopes,                           \
+              sizeof(mzm_nes_emulator::k_##name##_scopes) / sizeof(ScopeSpec), \
+              has_corpus, observer_only}
 
 inline const ImageSpec kParts[kNumParts] = {
     MZM_NES_PART(Part1, part1, 0x06006000u, 0x1240u, true, false),
@@ -109,43 +113,79 @@ inline std::size_t code_run_count(ImageKind kind) {
     }
 }
 
+// Index of the scope owning `pc` (scopes tile the image), or -1.
+inline int scope_of(const ImageSpec& spec, std::uint32_t pc) {
+    for (std::size_t i = 0; i < spec.scope_count; ++i)
+        for (std::size_t r = 0; r < spec.scopes[i].pc_count; ++r)
+            if (pc >= spec.scopes[i].pc[r].start && pc < spec.scopes[i].pc[r].end)
+                return static_cast<int>(i);
+    return -1;
+}
+
+// Full gate of one scope: cheap prefilter, then the complete SHA-256.
 template <typename ReadByte>
-bool verify_image(const ImageSpec& spec, ReadByte read_byte) {
+bool verify_scope(const ScopeSpec& sc, ReadByte read_byte) {
     // Stage 1: the first kPrefilterBytes gated bytes.
     {
         std::vector<std::uint8_t> head;
-        for (std::size_t r = 0; r < spec.gate_count && head.size() < kPrefilterBytes; ++r)
-            for (std::uint32_t a = spec.gate[r].start;
-                 a < spec.gate[r].end && head.size() < kPrefilterBytes; ++a)
+        for (std::size_t r = 0; r < sc.gate_count && head.size() < kPrefilterBytes; ++r)
+            for (std::uint32_t a = sc.gate[r].start;
+                 a < sc.gate[r].end && head.size() < kPrefilterBytes; ++a)
                 head.push_back(read_byte(a));
         if (mzm_nes_payload::sha256_hex(head.data(), head.size()) !=
-            spec.prefilter_sha256)
+            sc.prefilter_sha256)
             return false;
     }
     // Stage 2: the complete gate.
     std::vector<std::uint8_t> buffer;
-    for (std::size_t r = 0; r < spec.gate_count; ++r) {
-        for (std::uint32_t a = spec.gate[r].start; a < spec.gate[r].end; ++a) {
+    for (std::size_t r = 0; r < sc.gate_count; ++r) {
+        for (std::uint32_t a = sc.gate[r].start; a < sc.gate[r].end; ++a) {
             buffer.push_back(read_byte(a));
         }
     }
     return mzm_nes_payload::sha256_hex(buffer.data(), buffer.size()) ==
-           spec.gate_sha256;
+           sc.gate_sha256;
 }
 
-// Verified-copy fast path. `snapshot` holds the gate bytes of an image that was
-// previously accepted by verify_image() (the full SHA-256 gate). A later entry
+// Entry gate: the scope owning `pc` and every scope in its requires closure must
+// verify. Returns the index of the first failing scope, -1 if all verified, or
+// -2 if `pc` belongs to no scope of the image.
+template <typename ReadByte>
+int verify_entry(const ImageSpec& spec, std::uint32_t pc, ReadByte read_byte) {
+    const int own = scope_of(spec, pc);
+    if (own < 0) return -2;
+    // The entry scope first: it is the one a stale image must reject.
+    if (!verify_scope(spec.scopes[own], read_byte)) return own;
+    for (std::size_t i = 0; i < spec.scope_count; ++i)
+        if (static_cast<int>(i) != own &&
+            (spec.scopes[own].requires_mask >> i & 1u) &&
+            !verify_scope(spec.scopes[i], read_byte))
+            return static_cast<int>(i);
+    return -1;
+}
+
+// Every scope of the image verifies (e.g. the freshly loaded image).
+template <typename ReadByte>
+bool verify_image(const ImageSpec& spec, ReadByte read_byte) {
+    for (std::size_t i = 0; i < spec.scope_count; ++i)
+        if (!verify_scope(spec.scopes[i], read_byte)) return false;
+    return true;
+}
+
+// Verified-copy fast path. `snapshot` holds the gate bytes of a scope that was
+// previously accepted by verify_scope() (the full SHA-256 gate). A later entry
 // whose live bytes are identical to that snapshot is, by transitivity, the
-// same ROM-derived image; any difference falls back to the full gate. This is
+// same ROM-derived scope; any difference falls back to the full gate. This is
 // not a latch: every entry re-compares the live bytes.
-inline bool matches_snapshot(const ImageSpec& spec, const std::uint8_t* live_base,
+inline bool matches_snapshot(const ImageSpec& spec, const ScopeSpec& sc,
+                             const std::uint8_t* live_base,
                              const std::vector<std::uint8_t>& snapshot) {
     if (snapshot.empty()) return false;
     std::size_t off = 0;
-    for (std::size_t r = 0; r < spec.gate_count; ++r) {
-        const std::size_t n = spec.gate[r].end - spec.gate[r].start;
+    for (std::size_t r = 0; r < sc.gate_count; ++r) {
+        const std::size_t n = sc.gate[r].end - sc.gate[r].start;
         if (off + n > snapshot.size() ||
-            std::memcmp(live_base + (spec.gate[r].start - spec.start),
+            std::memcmp(live_base + (sc.gate[r].start - spec.start),
                         snapshot.data() + off, n) != 0)
             return false;
         off += n;

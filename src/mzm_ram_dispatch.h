@@ -36,6 +36,24 @@ struct mzm_nes_emulator_part_stats_t {
 size_t mzm_nes_emulator_part_stats(mzm_nes_emulator_part_stats_t* out,
                                    size_t capacity);
 
+// Per verification scope (NES-3b), counted by the scope that owns the entry PC.
+// verify_failures: the entry scope's own bytes did not match;
+// dependency_failures: the entry scope matched but a scope in its requires
+// closure did not. Both fall through (fail closed) and both are also counted
+// in the Part's verify_failures.
+struct mzm_nes_emulator_scope_stats_t {
+    const char* part = nullptr;
+    const char* scope = nullptr;
+    std::uint64_t attempts = 0;
+    std::uint64_t verified = 0;
+    std::uint64_t matches = 0;
+    std::uint64_t verify_failures = 0;
+    std::uint64_t dependency_failures = 0;
+};
+// Fills one row per (Part, scope) in Part/scope order; returns the row count.
+size_t mzm_nes_emulator_scope_stats(mzm_nes_emulator_scope_stats_t* out,
+                                    size_t capacity);
+
 // Opt-in observer for a verified emulator PC that has no native entry. Used by
 // tests to stop at the first real unsupported frontier; it may throw to unwind
 // the native call chain. With no observer installed the transfer is a normal
