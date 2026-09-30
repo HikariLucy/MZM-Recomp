@@ -21,6 +21,17 @@ ROOT = Path(__file__).resolve().parents[2]
 GEN = ROOT / "generated"
 CONFIG = ROOT / "configs" / "mzm-us.toml"
 START, END = 0x080006A0, 0x080007C4          # InitializeGame [start, end) (decomp symbols)
+# MZM's sram.c. Two of its functions are copied to the stack by the game; the
+# hook runs their ROM translation (position independent), so a yield inside them
+# resumes at ROM PCs.
+# The whole of MZM's sram.c [0x080051D4,0x08005368): every function loops over up
+# to 32 KiB of SRAM with wait states (SramWrite/SramCheck over the full SRAM take
+# several frames), so the yield lands at arbitrary interior PCs of it.
+REGIONS = [(START, END), (0x080051D4, 0x08005368)]
+
+
+def in_regions(pc):
+    return any(a <= pc < b for a, b in REGIONS)
 
 
 def region_functions():
@@ -30,7 +41,7 @@ def region_functions():
         text = Path(f).read_text()
         for m in re.finditer(r"^void (gf_\w+)\(void\) \{\n(.*?)^}\n", text, re.S | re.M):
             pcs = [int(x, 16) for x in re.findall(r"/\* ([0-9A-F]{8})  [0-9a-f]{8} T ", m.group(2))]
-            if pcs and START <= pcs[0] < END:
+            if pcs and in_regions(pcs[0]):
                 out[m.group(1)] = (pcs[0], pcs)
     return out
 
@@ -40,7 +51,7 @@ def thumb_entries():
     out = {}
     for m in re.finditer(r"\{0x([0-9A-F]{8})u, (\d)u, (\d)u, (\w+)\}", text):
         pc, thumb, resume, fn = int(m.group(1), 16), m.group(2) == "1", m.group(3) == "1", m.group(4)
-        if START <= pc < END:
+        if in_regions(pc):
             out[(pc, thumb)] = (resume, fn)
     return out
 
@@ -76,13 +87,24 @@ class InitializeGameResumeTests(unittest.TestCase):
         for data_pc in (0x08000734, 0x08000740, 0x08000748):     # literal pool words
             self.assertNotIn((data_pc, True), thumb_entries())
 
+    def test_sram_helper_bodies_resume_at_their_rom_pcs(self):
+        funcs = region_functions()
+        self.assertIn("gf_SramWriteUncheckedInternal", funcs)
+        self.assertIn("gf_SramCheckInternal", funcs)
+        self.assertEqual(funcs["gf_SramWriteUncheckedInternal"][0], 0x080051D4)
+        self.assertEqual(funcs["gf_SramCheckInternal"][0], 0x0800529C)
+        entries = thumb_entries()
+        for name in ("gf_SramWriteUncheckedInternal", "gf_SramCheckInternal"):
+            for pc in funcs[name][1][1:]:
+                self.assertEqual(entries.get((pc, True)), (True, name), hex(pc))
+
     def test_no_arm_entries_in_the_thumb_region(self):
         self.assertEqual([hex(pc) for (pc, thumb) in thumb_entries() if not thumb], [])
 
     def test_config_lists_exactly_the_interior_instructions(self):
         text = CONFIG.read_text()
         declared = {int(m, 16) for m in re.findall(
-            r"\[\[extra_func\]\]\naddr = 0x(080006[0-9A-F]{2}|080007[0-9A-F]{2})\nmode = \"thumb\"\nresume = true", text)}
+            r"\[\[extra_func\]\]\naddr = 0x(08[0-9A-F]{6})\nmode = \"thumb\"\nresume = true", text)}
         want = {p for _, (r, ps) in region_functions().items() for p in ps[1:]}
         self.assertEqual(sorted(hex(x) for x in declared), sorted(hex(x) for x in want))
 
