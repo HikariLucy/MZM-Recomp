@@ -389,7 +389,9 @@ Without input the game cycles title <-> attract scene by itself: hashes are not 
 
 `START` at frame 700 (hold 8): the frame changes from the title (`E4A220128A80B933`) to the START/CONTINUE menu (`16E0720AC211F04B`, 4 colours, stable from frame 720). `SELECT` (hold 8) toggles the cursor (`59D671E2FA30C813`) and a second `SELECT` returns to the menu hash. A second `START` at frame 1000 enters gameplay: the first Brinstar room (`EN..30` HUD, Samus, enemies). In gameplay the state is stable until ~frame 1500 (intro jingle), then evolves; `RIGHT` held from frame 1650 scrolls the room and moves Samus, `A` makes Samus jump, and Samus takes enemy damage (`EN..30` -> `EN..22`). Frames at 1700/1760/1830 differ from the no-input control. Frames were inspected visually from PPM dumps (`MZM_NES_FRAME_DUMP_DIR`); no external pixel oracle. The menu is toggled by SELECT, as in the NES original, not by the D-pad.
 
-### N4 first behavioural frontier (frame 3068)
+### N4 first behavioural frontier (frame 3068) — superseded by NES-3b
+
+> **Superseded.** NES-3b (below) fixed this false rejection; `0x06006E08` now runs natively. Kept as history.
 
 Scripted play session (RIGHT/A/B/LEFT/DOWN/UP cycles from frame 1700, a START pause at 3010): at **frame 3068** `dispatch_misses=1`, `interpreted_insns=2478`, Part 1 `verify_fail=1`. The recorded miss is **Part 1 `0x06006E08` ARM** (`tst r0,#0x80` ..., a PPU-register handler), entered from Part 2's IRQ path. Determinism: two runs reproduce it identically.
 
@@ -412,3 +414,72 @@ Quit was not attempted (no natural route yet; internal functions were not called
 ### Validation
 
 See the matrix (`docs/M4-COMPATIBILITY-MATRIX.md`, recomputed from the table).
+
+## NES-3b Part 1 verification scopes (2026-09-29): PASS, new frontier captured
+
+Status: **PASS** for the stated goal (the `0x06006E08` false rejection is gone without weakening the gate). The scripted session then reaches a **new, different frontier** at frame 3111 (stack-resident SRAM routine, below), so real gameplay, save/password and audio all stay **PARTIAL/BLOCKED**. GBARecomp stays at `2c40fe8539c566ce2aee7dce8a722917a6cf475c`, unchanged; nothing was pushed or merged.
+
+### Part 1 lifecycle (measured, not assumed)
+
+`MZM_NES_WATCH_IMAGE_WRITES=1` (read-only bus write observer in `tests/m4/nes_behavior_test.cpp`) records every store that changes a Part 1 byte over the 3,111-frame session:
+
+- Changed range: `0x06006000..0x06006DBF` inclusive (54 of 55 chunks of `0x40`, all halfword stores). Nothing at or above `0x06006DC0` is ever stored to; the resident half `0x06006E00..0x06007240` has 0 dirty bytes.
+- First frame 12 (chunks first touched at frames 12..18); repeated ~244,000 changing stores (sum over writers): it is tile/tilemap upload, not a one-shot.
+- Writers: Part 2 PPU-upload code (`0x03003420`, `0x03005438`, `0x03005464`, `0x03005474`, `0x03005678`, `0x0300568C`, `0x03005754`, `0x03005758`) plus the known single font-setup `strh` from Part 1 itself (`0x0600607C` -> `0x06006700`).
+- Boundary: `0x06006E00` is the literal pool of `sub_06006E08` and `0x0600713C` / `0x06007210` are function symbols (`--compare` proves each internal boundary is an ELF symbol; it cannot prove lifecycle, which is runtime evidence).
+
+### Canonical map schema
+
+`configs/nes-emulator-map-us.toml` gains `[[image.scope]]` (`id`, `ranges`, `requires`, `lifecycle`, `note`) and one more `[[image.mutable]]`. Part 1 stays ONE image (`nes_part1`, one `part1.bin`, one private domain); the scopes never reach the generated GBARecomp config (`.local/mzm-us-nes-emulator.toml` is byte-identical before and after, tested).
+
+| scope | ranges | requires | lifecycle |
+|---|---|---|---|
+| init | `0x06006000..0x06006E00` | resident | overwritten-after-init |
+| resident | `0x06006E00..0x0600713C`, `0x06007210..0x06007240` | none | resident |
+| menu | `0x0600713C..0x06007210` | init, resident | overwritten-after-init |
+
+The third scope is a finding: `sub_0600713C` (the emulator menu/error screen) tail-branches into init code (`0x06006880/0x06006968`) and its literals sit in resident, so it inherits the init lifecycle. `requires` lists the *direct* static transfers (`b/bl`, pc-relative literal and table references) that leave a scope, because generated code follows them without going through the resolver; the runtime verifies the transitive closure. `tests/m4/test_nes_map.py` derives those edges from the extracted bytes and fails if one is undeclared (`init -> resident` `0x0600691C -> 0x06006E08`, `menu -> init` `0x06007208 -> 0x06006880`, resident has none).
+
+### Verification policy
+
+PC -> owning scope -> verify that scope and its `requires` closure (prefilter SHA-256 of the first 32 gated bytes, then the full gate SHA-256, then a verified-copy snapshot fast path per scope) -> invoke the exact private entry. There is no "Part verified once" latch. After init is overwritten: resident PCs run if the resident bytes match; init and menu PCs fail closed. Literal pools are inside the gated ranges (generated code bakes them in); nothing is excluded for proximity. `mzm_nes_emulator_scope_stats()` adds per-scope `attempts/verified/matches/verify_failures/dependency_failures`.
+
+Security tests (`mzm-nes-scope-policy`, `tests/m4/nes_scope_policy_test.cpp`, no ROM run): fresh init/resident/menu entries valid; init byte changed -> resident valid, init and menu rejected; last init byte `0x06006DFF` only affects init and first resident byte `0x06006E00` is required by init; resident instruction or any of four resident literals changed -> resident rejected; the `0x06006700` exclusion still holds and the byte after it is still gated; a Thumb entry at an ARM PC is not run and not counted; Parts 2-6 unaffected by Part 1 mutation and still reject their own flipped byte; restoring a byte re-admits the entry (no latch); production hook stats attribute the failure to the right scope.
+
+### Old frontier
+
+`0x06006E08` ARM at frame 3068: before `verify_fail=1`, `interpreted_insns=2478`; now the entry is a verified native private invoke and the run continues (Part 1: 8 attempts, 8 verified, 8 matches, `verify_fail=0`, `interpreted_insns=0` up to the new frontier).
+
+### Regression found and fixed on the way: native stack depth
+
+The first NES-3b build of `mzm_ram_dispatch` segfaulted (stack overflow) before frame 20 and also broke NES-2b. The generated Part 2 code recurses natively (`0x030056E8 -> 0x03005754 -> 0x03005794 -> ...`) through this hook thousands of frames deep, so the hook's own frame size is part of the budget: with `ulimit -s unlimited` it passed, with 8 MB it overflowed. The verification (lambda, byte snapshots) now lives in a `noinline` helper and the hook frame is `0x88` bytes. With the default 8 MB stack the runs pass; **4 MB overflows**. Any future change to `mzm_ram_dispatch` must keep its frame small; this is a latent limit, not a fix of the recursion.
+
+### Part 6 mutable password buffer (frame 3068)
+
+The first continued run then failed Part 6's gate at `0x0203E390` Thumb (`failed_scope=part6`): four bytes changed, `0x0203E448/449/44C/44D` (`0x80,0x02,0xC0,0x42`), written once at frame 3068 by `0x0203E31C`. They lie in `sPasswordBytes[18]` (`nes_metroid/emulator/src/part6.c`, first object of `part6.o .data`, zero-initialised, filled by `MemoryCopy`), i.e. exactly the 18-byte zero run `0x0203E43C..0x0203E44E` of the image, bounded by non-zero constants. That range (and only it) is now `[[image.mutable]]`; adjacent bytes and all code stay gated (unit-tested). It is the same class as Part 2's `.data`. Evidence is decomp source + extracted image + observed writer; the maintainer ELF oracle could not be re-run (the nested ELF is not on this machine and rebuilding it from `nes_metroid/emulator` failed at link, so `--compare` was not re-executed after this change; it does not compare mutable ranges).
+
+### New first frontier (frame 3111)
+
+Scripted session (`700:START, 1000:START`, then RIGHT / RIGHT+A / B / LEFT / A / DOWN / UP cycles every 240 frames from 1700). Samus dies, the game shows GAME OVER, then PASSWORD and `SAVE YOUR PROGRESS TO THE MEMORY? YES / NO` (inspected by eye), and the scripted `A` selects YES.
+
+| field | value |
+|---|---|
+| PC / mode | `0x03827110` Thumb (mirror of IWRAM `0x03007110`, the stack) |
+| Part | none: the code is not in any Part image; bytes are a copy of Part 6 `0x0203E7BC` (`SramCheckInternal`, first `0x20` bytes equal) |
+| Caller | Part 6 `_call_via_r3` `0x0203E8B0` (`bx r3`), from `SramCheck` (`nes_metroid/emulator/src/sram/sram.c`), which copies the routine into `u16 code[0x60]` on the stack and calls `code + 1` |
+| CPU at the miss | `r0=0x0201C010 r1=0x0E007FE8 r2=0x18 r3=0x03827111 r4=0x0201C010 r5=0x0E007FE8 r6=0x18 r7=0 r8=0x4E42 r9=0 r10=0xC399 r11=0x0201C028 r12=0x0203E3DD sp=0x03827110 lr=0x0203E849 pc=0x03827110 cpsr=0x3F` (Thumb, system mode) |
+| Counters | 1 miss, 384 interpreted instructions, `unmapped=0`, `io_unhandled=0`, resolver failures 0, IRQ depth 0 |
+
+Observed by gdb on `runtime_bridge_interpret` (the test's stall check runs after the top-level dispatch returns, so its own `stop_cpu` line is the later stall state, PC `0x0600ED74`). The routine runs in the interpreter for that one call and the wait loop continues; the run is stopped at the stall as designed. A variant that sent `SELECT` then `A` at the prompt (intended as NO; the cursor state was not checked) reached the same miss at frame 3099, so the path is not specific to the original script's `A`. This is the emulator's SRAM save/check path (`sram.c`); modelling code copied to a runtime stack address is a separate design (the address depends on `sp`) and is **not** attempted here.
+
+### Continued gameplay / limits
+
+Gameplay runs natively from frame ~1000 to 3111 (~2,100 frames, strict counters zero); only 43 of those frames lie beyond the old frontier at 3068, because the new frontier arrives right after. The requested 10,000 post-gameplay frames were **not** reached because a genuine new frontier stops the session first, and the rule is to stop at the first miss. Inputs are the START,START,RIGHT,A pattern plus B/LEFT/UP/DOWN cycles; no TAS. Real gameplay, Save/password and Audio stay PARTIAL; audio remains blocked by the GBARecomp FIFO DMA gap (not touched, not a NES-3b criterion).
+
+### Determinism
+
+Two concurrent 14,000-frame-limit runs (both stop at the frontier) produced byte-identical stdout (217 lines) and stderr: same stall frame, frame hashes at 1300/3000/3068/3100, strict counters, IRQ counts (`irq_vec=irq_handler=13724` at the stop), per-Part resolver stats and the four Part 6 write records.
+
+### Validation
+
+CTest 63/63 (NES-1a, NES-1b, NES-2b, scope policy, behavior); Python 19/19 (unittest over `tests/m4`); M4 harness 01/02/03 PASS; soak (below) PASS; `git diff --check` PASS; GBARecomp `mzm/mzm-integration` untouched at `2c40fe8`.
