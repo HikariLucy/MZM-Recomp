@@ -34,6 +34,7 @@ for required in \
     "$BUILD/gba_recompile" \
     "$ROM" \
     "$REPO/configs/mzm-us.toml" \
+    "$REPO/configs/mzm-resume-units.toml" \
     "$NES_MAP" \
     "$IMPORT/BMXE_symbols.toml" \
     "$IMPORT/imported_symbols.tsv" \
@@ -68,6 +69,29 @@ python3 "$REPO/scripts/generate-nes-emulator-config.py" --map "$NES_MAP" \
 echo "=== M1A PREPARE REVIEWED NES SYMBOLS OVERLAY ==="
 python3 "$REPO/scripts/prepare-nes-overlay.py" "$IMPORT/BMXE_symbols.toml" "$OVERLAY"
 
+echo "=== M1A GENERATE MZM CORPUS: pass 1 (no resume overlay, decode oracle) ==="
+PASS1="$LOG_DIR/resume-pass1"
+RESUME_UNITS="$REPO/configs/mzm-resume-units.toml"
+RESUME_OVERLAY="$LOG_DIR/mzm-us-resume.toml"
+rm -rf "$PASS1"
+mkdir -p "$PASS1"
+"$BUILD/gba_recompile" \
+    --rom "$ROM" \
+    --config "$REPO/configs/mzm-us.toml" \
+    --config "$NES_CONFIG" \
+    --config "$OVERLAY" \
+    --symbols "$IMPORT/imported_symbols.tsv" \
+    --data-symbols "$IMPORT/imported_data_symbols.tsv" \
+    --out "$PASS1" \
+    --max-functions 65536 > "$LOG_DIR/m1-generate-pass1.log" 2>&1
+
+echo "=== M1A EXPAND REVIEWED RESUME UNITS (audit + derive instruction resumes) ==="
+python3 "$REPO/scripts/expand-resume-units.py" --units "$RESUME_UNITS" \
+    --corpus "$PASS1" --out "$RESUME_OVERLAY"
+# Baseline for tests/m4/test_resume.py: the resume-free dispatch table.
+cp "$PASS1/dispatch_table.cpp" "$LOG_DIR/resume-pass1-dispatch_table.cpp"
+rm -rf "$PASS1"
+
 echo "=== M1A GENERATE MZM CORPUS ==="
 
 "$BUILD/gba_recompile" \
@@ -75,6 +99,7 @@ echo "=== M1A GENERATE MZM CORPUS ==="
     --config "$REPO/configs/mzm-us.toml" \
     --config "$NES_CONFIG" \
     --config "$OVERLAY" \
+    --config "$RESUME_OVERLAY" \
     --symbols "$IMPORT/imported_symbols.tsv" \
     --data-symbols "$IMPORT/imported_data_symbols.tsv" \
     --out "$OUT" \

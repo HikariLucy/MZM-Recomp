@@ -1,112 +1,190 @@
-"""M4-RESUME-1: VBlank interior resume of the InitializeGame region.
+"""M4-RESUME-1/2: reviewed resume units (VBlank interior resumes).
 
 A VBlank yield unwinds to the outer loop, which re-dispatches R15 at the NEXT
-instruction prologue (runtime_should_yield). After the NES quit MZM restarts and
-InitializeGame's DMA3 fills (EWRAM 0x10000 words, > one frame) cross a VBlank,
-so R15 = 0x080006CA (the instruction after `str r1,[r0,#8]`) is re-dispatched
-and there was no static entry (strict-static miss).
+instruction prologue (runtime_should_yield). A function that can outlast a frame
+needs a static resume alias at every decoded instruction; static_resume_all
+would publish that for the whole ROM (233,709 rows) including unaudited code, so
+only the reviewed units of configs/mzm-resume-units.toml get it. The PCs are
+derived by scripts/expand-resume-units.py from the recompiler's own decode.
 
-Ground truth is the generated code itself: every decoded instruction carries a
-`/* PC ... T ... */` comment inside the function that contains it; literal
-pools have none. Expected: every interior instruction of the region is a
-resume alias of ITS containing function; nothing else (data, other modes) is
-published; the roots are unchanged.
+Ground truth here is the generated corpus: every decoded instruction carries a
+`/* PC ... T|A ... */` comment inside the function that contains it; literal
+pools, data and padding have none.
 """
-import glob
+import importlib.util
 import re
+import subprocess
+import sys
+import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GEN = ROOT / "generated"
+LOCAL = ROOT / ".local"
+UNITS = ROOT / "configs" / "mzm-resume-units.toml"
 CONFIG = ROOT / "configs" / "mzm-us.toml"
-START, END = 0x080006A0, 0x080007C4          # InitializeGame [start, end) (decomp symbols)
-# MZM's sram.c. Two of its functions are copied to the stack by the game; the
-# hook runs their ROM translation (position independent), so a yield inside them
-# resumes at ROM PCs.
-# The whole of MZM's sram.c [0x080051D4,0x08005368): every function loops over up
-# to 32 KiB of SRAM with wait states (SramWrite/SramCheck over the full SRAM take
-# several frames), so the yield lands at arbitrary interior PCs of it.
-REGIONS = [(START, END), (0x080051D4, 0x08005368)]
+TOOL = ROOT / "scripts" / "expand-resume-units.py"
+# Units the boot after the NES quit needs (each audited individually, see docs).
+REQUIRED_UNITS = ["InitializeGame", "sram"]
+
+_spec = importlib.util.spec_from_file_location("expand_resume_units", TOOL)
+tool = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tool)
 
 
-def in_regions(pc):
-    return any(a <= pc < b for a, b in REGIONS)
+def units():
+    return tool.load_units(UNITS)
 
 
-def region_functions():
-    """{function name: (root pc, [instruction pcs])} for functions rooted in the region."""
-    out = {}
-    for f in sorted(glob.glob(str(GEN / "recompiled_*.cpp"))):
-        text = Path(f).read_text()
-        for m in re.finditer(r"^void (gf_\w+)\(void\) \{\n(.*?)^}\n", text, re.S | re.M):
-            pcs = [int(x, 16) for x in re.findall(r"/\* ([0-9A-F]{8})  [0-9a-f]{8} T ", m.group(2))]
-            if pcs and in_regions(pcs[0]):
-                out[m.group(1)] = (pcs[0], pcs)
-    return out
-
-
-def thumb_entries():
-    text = (GEN / "dispatch_table.cpp").read_text()
-    out = {}
+def dispatch_rows(path):
+    text = Path(path).read_text()
+    rows = {}
     for m in re.finditer(r"\{0x([0-9A-F]{8})u, (\d)u, (\d)u, (\w+)\}", text):
-        pc, thumb, resume, fn = int(m.group(1), 16), m.group(2) == "1", m.group(3) == "1", m.group(4)
-        if in_regions(pc):
-            out[(pc, thumb)] = (resume, fn)
-    return out
+        rows[(int(m.group(1), 16), m.group(2) == "1")] = (m.group(3) == "1", m.group(4))
+    return rows
+
+
+def unit_functions(u, funcs):
+    return {n: v for n, v in funcs.items() if u["start"] <= v[1][0] < u["end"]}
+
+
+class ContractAuditTests(unittest.TestCase):
+    """The safety contract itself: locals confined to their instruction's block."""
+
+    GOOD = ("    if (g_runtime_resume_pc) { }\n"
+            "    /* 08000000  08000000 T movs r0,#0 */\n    uint32_t _cyc_08000000 = 1u;\n    g_cpu.R[0] = _cyc_08000000;\n"
+            "    /* 08000002  08000002 T bx r0 */\n    uint32_t _bxt_08000002 = g_cpu.R[0];\n")
+
+    def test_confined_locals_pass(self):
+        self.assertEqual(tool.audit_function("f", self.GOOD), [])
+
+    def test_local_carried_across_instructions_is_rejected(self):
+        bad = self.GOOD.replace("_bxt_08000002 = g_cpu.R[0];", "_bxt_08000002 = _cyc_08000000;")
+        problems = tool.audit_function("f", bad)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("0x08000002", problems[0])
+
+    def test_static_local_is_rejected(self):
+        bad = self.GOOD + "    static uint32_t hidden = 0;\n"
+        self.assertTrue(any("static" in p for p in tool.audit_function("f", bad)))
+
+    def test_expansion_rejects_a_function_that_leaves_the_unit(self):
+        body = "    /* 08000000  08000000 T nop */\n    /* 08000002  08000002 T nop */\n"
+        funcs = {"gf_a": ("T", [0x08000000, 0x08000002], body)}
+        u = {"name": "u", "start": 0x08000000, "end": 0x08000002, "mode": "thumb", "reason": "x"}
+        with self.assertRaises(SystemExit):
+            tool.expand([u], funcs)
+
+    def test_expansion_rejects_a_range_that_does_not_start_at_a_root(self):
+        funcs = {"gf_a": ("T", [0x08000000, 0x08000002], "    /* 08000000  08000000 T nop */\n")}
+        u = {"name": "u", "start": 0x08000002, "end": 0x08000004, "mode": "thumb", "reason": "x"}
+        with self.assertRaises(SystemExit):
+            tool.expand([u], funcs)
+
+    def test_expansion_publishes_instructions_only_and_skips_other_roots(self):
+        a = "    /* 08000000  08000000 T nop */\n    /* 08000002  08000002 T nop */\n"
+        b = "    /* 08000006  08000006 T nop */\n"
+        funcs = {"gf_a": ("T", [0x08000000, 0x08000002], a), "gf_b": ("T", [0x08000006], b)}
+        u = {"name": "u", "start": 0x08000000, "end": 0x08000008, "mode": "thumb", "reason": "x"}
+        info, entries = tool.expand([u], funcs)
+        self.assertEqual([hex(e[0]) for e in entries], ["0x8000002"])   # 0x08000004 (data) and roots are not
+        self.assertEqual(info["u"]["insn"], 3)
+
+
+class UnitsFileTests(unittest.TestCase):
+    def test_required_units_are_declared_with_a_reason(self):
+        by_name = {u["name"]: u for u in units()}
+        for name in REQUIRED_UNITS:
+            self.assertIn(name, by_name, "reviewed unit missing from configs/mzm-resume-units.toml")
+            self.assertTrue(by_name[name]["reason"].strip())
+
+    def test_units_do_not_overlap(self):
+        us = sorted(units(), key=lambda u: u["start"])
+        for a, b in zip(us, us[1:]):
+            self.assertLessEqual(a["end"], b["start"], f"{a['name']} overlaps {b['name']}")
+
+    def test_no_pcs_are_listed_by_hand_in_the_main_config(self):
+        self.assertNotIn("resume = true", CONFIG.read_text())
+
+    def test_static_resume_all_is_not_enabled(self):
+        self.assertNotIn("static_resume_all = true", CONFIG.read_text())
 
 
 @unittest.skipUnless((GEN / "dispatch_table.cpp").exists(), "generated corpus not present")
-class InitializeGameResumeTests(unittest.TestCase):
-    def test_region_shape(self):
-        funcs = region_functions()
-        self.assertIn("gf_InitializeGame", funcs)
-        self.assertEqual(funcs["gf_InitializeGame"][0], START)
-        pcs = {p for _, ps in funcs.values() for p in ps}
-        self.assertIn(0x080006CA, pcs)          # after the EWRAM DMA3 start (first frontier)
-        self.assertIn(0x080006DC, pcs)          # after the IWRAM DMA3 start
+class GeneratedResumeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.funcs = tool.load_functions(str(GEN))
+        cls.rows = dispatch_rows(GEN / "dispatch_table.cpp")
 
-    def test_every_interior_instruction_is_a_resume_of_its_containing_function(self):
-        entries = thumb_entries()
+    def test_every_required_unit_is_a_generated_function_set(self):
+        for u in units():
+            self.assertTrue(unit_functions(u, self.funcs), u["name"])
+
+    def test_every_instruction_of_a_unit_is_a_resume_of_its_containing_function(self):
+        roots = {v[1][0] for v in self.funcs.values()}
         missing, wrong = [], []
-        for name, (root, pcs) in region_functions().items():
-            self.assertEqual(entries.get((root, True)), (False, name), "root " + name)
-            for pc in pcs[1:]:
-                got = entries.get((pc, True))
-                if got is None:
-                    missing.append(pc)
-                elif got != (True, name):
-                    wrong.append((hex(pc), got, name))
+        for u in units():
+            thumb = u["mode"] == "thumb"
+            for name, (mode, pcs, body) in unit_functions(u, self.funcs).items():
+                self.assertEqual(self.rows.get((pcs[0], thumb)), (False, name), "root " + name)
+                for pc in pcs[1:]:
+                    if pc in roots:
+                        continue
+                    got = self.rows.get((pc, thumb))
+                    if got is None:
+                        missing.append((u["name"], hex(pc)))
+                    elif got != (True, name):
+                        wrong.append((hex(pc), got, name))
         self.assertEqual(wrong, [])
-        self.assertEqual([hex(m) for m in missing], [], "instruction PCs without a static resume")
+        self.assertEqual(missing, [], "instruction PCs without a static resume")
 
-    def test_nothing_but_instruction_boundaries_is_published(self):
-        pcs = {p for _, ps in region_functions().values() for p in ps}
-        extra = sorted(pc for (pc, thumb), (resume, _) in thumb_entries().items() if resume and pc not in pcs)
-        self.assertEqual([hex(e) for e in extra], [], "literal/data PCs published as resumes")
-        for data_pc in (0x08000734, 0x08000740, 0x08000748):     # literal pool words
-            self.assertNotIn((data_pc, True), thumb_entries())
+    def test_nothing_but_instruction_boundaries_is_published_in_a_unit(self):
+        for u in units():
+            thumb = u["mode"] == "thumb"
+            pcs = {p for _, (m, ps, b) in unit_functions(u, self.funcs).items() for p in ps}
+            extra = sorted(pc for (pc, t), (resume, _) in self.rows.items()
+                           if resume and t == thumb and u["start"] <= pc < u["end"] and pc not in pcs)
+            self.assertEqual([hex(e) for e in extra], [], f"{u['name']}: data/literal PCs published")
+            self.assertEqual([hex(pc) for (pc, t) in self.rows
+                              if u["start"] <= pc < u["end"] and t != thumb], [], "other-mode entry in the unit")
 
-    def test_sram_helper_bodies_resume_at_their_rom_pcs(self):
-        funcs = region_functions()
-        self.assertIn("gf_SramWriteUncheckedInternal", funcs)
-        self.assertIn("gf_SramCheckInternal", funcs)
-        self.assertEqual(funcs["gf_SramWriteUncheckedInternal"][0], 0x080051D4)
-        self.assertEqual(funcs["gf_SramCheckInternal"][0], 0x0800529C)
-        entries = thumb_entries()
-        for name in ("gf_SramWriteUncheckedInternal", "gf_SramCheckInternal"):
-            for pc in funcs[name][1][1:]:
-                self.assertEqual(entries.get((pc, True)), (True, name), hex(pc))
+    def test_resumes_are_published_only_inside_reviewed_units(self):
+        us = units()
+        stray = sorted(pc for (pc, t), (resume, _) in self.rows.items()
+                       if resume and not any(u["start"] <= pc < u["end"] for u in us))
+        self.assertEqual([hex(s) for s in stray], [])
 
-    def test_no_arm_entries_in_the_thumb_region(self):
-        self.assertEqual([hex(pc) for (pc, thumb) in thumb_entries() if not thumb], [])
+    def test_the_contract_holds_for_every_unit_function(self):
+        for u in units():
+            for name, (m, pcs, body) in unit_functions(u, self.funcs).items():
+                self.assertEqual(tool.audit_function(name, body), [])
 
-    def test_config_lists_exactly_the_interior_instructions(self):
-        text = CONFIG.read_text()
-        declared = {int(m, 16) for m in re.findall(
-            r"\[\[extra_func\]\]\naddr = 0x(08[0-9A-F]{6})\nmode = \"thumb\"\nresume = true", text)}
-        want = {p for _, (r, ps) in region_functions().items() for p in ps[1:]}
-        self.assertEqual(sorted(hex(x) for x in declared), sorted(hex(x) for x in want))
+    def test_expansion_is_deterministic_and_matches_the_generation_overlay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            outs = []
+            for i in range(2):
+                out = Path(tmp) / f"o{i}.toml"
+                subprocess.check_call([sys.executable, str(TOOL), "--units", str(UNITS),
+                                       "--corpus", str(GEN), "--out", str(out)], stdout=subprocess.DEVNULL)
+                outs.append(out.read_bytes())
+            self.assertEqual(outs[0], outs[1])
+        overlay = LOCAL / "mzm-us-resume.toml"
+        if overlay.exists():
+            self.assertEqual(overlay.read_bytes(), outs[0], "overlay used for generation is stale")
+
+    def test_normal_corpus_loses_no_entry_and_only_gains_resume_aliases(self):
+        base = LOCAL / "resume-pass1-dispatch_table.cpp"
+        if not base.exists():
+            self.skipTest("resume-free baseline not present (run scripts/generate-m1.sh)")
+        before = dispatch_rows(base)
+        for key, val in before.items():
+            self.assertEqual(self.rows.get(key), val, f"entry 0x{key[0]:08X} changed or lost")
+        added = {k: v for k, v in self.rows.items() if k not in before}
+        self.assertTrue(all(resume for resume, _ in added.values()), "a non-resume entry was added")
+        self.assertEqual(len(self.rows) - len(before), len(added))
 
 
 if __name__ == "__main__":

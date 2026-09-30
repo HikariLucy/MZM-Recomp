@@ -1,0 +1,34 @@
+# Reviewed resume units (M4-RESUME-2), MZM USA rev 0.
+#
+# runtime_should_yield() unwinds at the next instruction prologue after a VBlank
+# start and the outer loop re-dispatches R15 there, so a function that can
+# outlast a frame needs a static resume alias at every decoded instruction.
+# static_resume_all does that for the whole ROM (233,709 dispatch rows against
+# 28,670, including code nobody has audited) and is NOT used. A unit lists a
+# function, or a small set of functions, that was reviewed against the safety
+# contract in scripts/expand-resume-units.py (a resume PC can be entered with
+# only g_cpu, CPSR, guest memory and guest-visible runtime state).
+#
+# THIS FILE is the source of truth. The per-instruction PCs are derived by
+# scripts/expand-resume-units.py from the recompiler's own decode and passed to
+# gba_recompile as an overlay (scripts/generate-m1.sh). Never list PCs by hand.
+#
+#   name    unit id
+#   start   first function root (must be a generated function entry)
+#   end     exclusive end; every function rooted inside must decode only inside
+#   mode    "thumb" | "arm"
+#   reason  why this unit yields: what outlasts a frame
+
+[[resume_unit]]
+name = "InitializeGame"
+start = 0x080006A0
+end = 0x080007C4
+mode = "thumb"
+reason = "DMA3 clears EWRAM (0x10000 words) and IWRAM; the first outlasts a frame after the NES quit restarts MZM (first miss 0x080006CA)"
+
+[[resume_unit]]
+name = "sram"
+start = 0x080051D4
+end = 0x08005368
+mode = "thumb"
+reason = "sram.c: MZM save init reads/writes/verifies all 32 KiB SRAM byte by byte with wait states over several frames; includes the two routines the game copies to the stack (first misses 0x080051EE, 0x08005280)"
