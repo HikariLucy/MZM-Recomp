@@ -17,6 +17,7 @@
 // All lines starting with "NES3 " are deterministic (no timing) and comparable
 // between runs.
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -151,7 +152,6 @@ std::uint32_t g_last_sram_pc = 0;
 std::uint64_t g_apu_logged = 0;
 std::map<std::uint32_t, std::uint64_t> g_apu_regs;  // NES APU register -> writes
 bool g_audio_diag = false;
-bool g_diag_force_fifo32 = false;
 void on_function_entry(std::uint32_t pc) {
     if (pc == 0x00000018u) ++g_irq_vector_entries;
     if (pc == kApuWrite && g_audio_diag) {
@@ -241,7 +241,6 @@ int main(int argc, char** argv) {
     const std::vector<InputEvent> input = parse_input(env_or("MZM_NES_INPUT", ""));
     const std::string dump_dir = env_or("MZM_NES_FRAME_DUMP_DIR", "");
     g_audio_diag = env_or("MZM_NES_AUDIO_DIAG", "0") == "1";
-    g_diag_force_fifo32 = env_or("MZM_NES_DIAG_FORCE_FIFO32", "0") == "1";
 
     std::ifstream in(argv[1], std::ios::binary);
     const std::vector<std::uint8_t> rom((std::istreambuf_iterator<char>(in)), {});
@@ -315,6 +314,16 @@ int main(int argc, char** argv) {
     std::uint32_t stall_pc = 0;
     std::uint64_t audio_hash = 1469598103934665603ull, audio_next = 0, audio_nonzero = 0,
                   audio_direct_nonzero = 0;
+    // Host-audio qualification stats over the final mono mix (CapSample::mixed).
+    std::uint64_t au_a_nz = 0, au_b_nz = 0, au_n = 0, au_clip = 0, au_changes = 0, au_windows = 0, au_active_windows = 0;
+    std::int64_t au_min = 0, au_max = 0;
+    long double au_sumsq = 0.0L, au_sum = 0.0L;
+    std::int16_t au_prev = 0;
+    std::int16_t au_win_min = 0, au_win_max = 0;
+    std::uint64_t au_win_n = 0;
+    std::set<std::int16_t> au_distinct;
+    std::vector<std::int16_t> au_wav;
+    const std::string au_wav_path = env_or("MZM_NES_AUDIO_WAV", "");
     std::uint64_t prev_frame = ~0ull;
     std::uint16_t cur_keys = 0x03FFu;
     bool keys_pressed_logged = false;
@@ -396,13 +405,6 @@ int main(int argc, char** argv) {
             cur_keys = keys;
             keys_pressed_logged = true;
         }
-        // DIAGNOSTIC ONLY (never used for qualification): real hardware ignores
-        // DMA CNT_H bit 10 in sound-FIFO mode; GBARecomp's run_sound_fifo_dma
-        // requires it. Forcing it here tests that hypothesis without touching
-        // upstream.
-        if (g_diag_force_fifo32 && (bus.io().read16(0xC6) & 0x8000u) &&
-            (bus.io().read16(0xC6) & 0x0400u) == 0)
-            bus.io().write16(0xC6, static_cast<std::uint16_t>(bus.io().read16(0xC6) | 0x0400u));
         max_call_depth = std::max<std::uint64_t>(max_call_depth, runtime_call_stack_depth());
         max_irq_depth = std::max<std::uint64_t>(max_irq_depth, g_irq_nest_depth);
         // Audio capture window since last frame.
@@ -419,6 +421,31 @@ int main(int argc, char** argv) {
                 audio_hash = fnv(reinterpret_cast<const std::uint8_t*>(&buf[k]), sizeof(buf[k]), audio_hash);
                 if (buf[k].mixed != 0) ++audio_nonzero;
                 if (buf[k].direct_a != 0 || buf[k].direct_b != 0) ++audio_direct_nonzero;
+                {
+                    const std::int16_t v = buf[k].mixed;
+                    if (buf[k].direct_a != 0) ++au_a_nz;
+                    if (buf[k].direct_b != 0) ++au_b_nz;
+                    if (au_n == 0) { au_min = au_max = v; }
+                    au_min = std::min<std::int64_t>(au_min, v);
+                    au_max = std::max<std::int64_t>(au_max, v);
+                    if (v >= 32767 || v <= -32768) ++au_clip;
+                    if (au_n && v != au_prev) ++au_changes;
+                    au_prev = v;
+                    au_sum += v;
+                    au_sumsq += static_cast<long double>(v) * v;
+                    if (au_distinct.size() < 65536) au_distinct.insert(v);
+                    if (!au_wav_path.empty()) au_wav.push_back(v);
+                    // 32768-sample windows (1 s): does the output vary inside them?
+                    if (au_win_n == 0) au_win_min = au_win_max = v;
+                    au_win_min = std::min(au_win_min, v);
+                    au_win_max = std::max(au_win_max, v);
+                    if (++au_win_n == 32768) {
+                        ++au_windows;
+                        if (au_win_min != au_win_max) ++au_active_windows;
+                        au_win_n = 0;
+                    }
+                    ++au_n;
+                }
             }
             start = first + n;
         }
@@ -569,6 +596,36 @@ int main(int argc, char** argv) {
                 (unsigned long long)audio_hash, bus.io().read16(0x082), bus.io().dma_runs(1),
                 bus.io().dma_words(1), bus.io().read32(0x0BC), bus.io().read32(0x0C0),
                 bus.io().read32(0x0C4), bus.io().read32(0x100), bus.io().read32(0x104));
+    {
+        const long double mean = au_n ? au_sum / au_n : 0.0L;
+        const long double rms = au_n ? std::sqrt(static_cast<double>(au_sumsq / au_n)) : 0.0L;
+        const long double var = au_n ? au_sumsq / au_n - mean * mean : 0.0L;
+        std::printf("NES3 audio_stats rate=%u channels=1 n=%llu nonzero=%llu min=%lld max=%lld "
+                    "rms=%.3f mean=%.3f stddev=%.3f clip=%llu changes=%llu distinct=%llu "
+                    "windows=%llu active_windows=%llu dma1_words=%llu dma2_words=%llu "
+                    "dma1_runs=%llu dma2_runs=%llu fifoA_nonzero=%llu fifoB_nonzero=%llu dma1_cnt_h=0x%04X dma2_cnt_h=0x%04X\n",
+                    bus.audio().sample_rate(), (unsigned long long)au_n,
+                    (unsigned long long)audio_nonzero, (long long)au_min, (long long)au_max,
+                    static_cast<double>(rms), static_cast<double>(mean),
+                    std::sqrt(static_cast<double>(var > 0 ? var : 0)), (unsigned long long)au_clip,
+                    (unsigned long long)au_changes, (unsigned long long)au_distinct.size(),
+                    (unsigned long long)au_windows, (unsigned long long)au_active_windows,
+                    (unsigned long long)bus.io().dma_words(1), (unsigned long long)bus.io().dma_words(2),
+                    (unsigned long long)bus.io().dma_runs(1), (unsigned long long)bus.io().dma_runs(2),
+                    (unsigned long long)au_a_nz, (unsigned long long)au_b_nz,
+                    bus.io().read16(0xC6), bus.io().read16(0xD2));
+    }
+    if (!au_wav_path.empty()) {
+        // Local QA artifact only (game-derived audio is never committed).
+        std::ofstream w(au_wav_path, std::ios::binary);
+        auto le32 = [&](std::uint32_t v) { w.write(reinterpret_cast<const char*>(&v), 4); };
+        auto le16 = [&](std::uint16_t v) { w.write(reinterpret_cast<const char*>(&v), 2); };
+        const std::uint32_t bytes = static_cast<std::uint32_t>(au_wav.size() * 2);
+        w.write("RIFF", 4); le32(36 + bytes); w.write("WAVEfmt ", 8); le32(16); le16(1); le16(1);
+        le32(bus.audio().sample_rate()); le32(bus.audio().sample_rate() * 2); le16(2); le16(16);
+        w.write("data", 4); le32(bytes);
+        w.write(reinterpret_cast<const char*>(au_wav.data()), bytes);
+    }
     if (g_audio_diag) {
         for (const auto& kv : g_apu_regs)
             std::printf("NES3 apu_reg 0x%08X writes=%llu\n", kv.first, (unsigned long long)kv.second);

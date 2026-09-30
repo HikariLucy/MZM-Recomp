@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 WORK="${WORK:-$HOME/proyectos/Recomp/Metroid-ZeroMissionRecomp}"
 GBARECOMP="${GBARECOMP_ROOT:-${GBARECOMP:-$HOME/proyectos/Recomp/GBARecomp-mzm-integration}}"
-PIN="${MZM_GBARECOMP_PIN:-${PIN:-2bad2d8e83f36e8fb9f509f5ddce0eb8f4127f09}}"
+PIN="${MZM_GBARECOMP_PIN:-${PIN:-0b9d0326d53a28516d06f2eab43b2bc72c6fef43}}"
 if [[ "$(git -C "$GBARECOMP" rev-parse HEAD)" != "$PIN" ]]; then
     echo "GBARecomp revision must be $PIN; found $(git -C "$GBARECOMP" rev-parse HEAD)" >&2
     exit 2

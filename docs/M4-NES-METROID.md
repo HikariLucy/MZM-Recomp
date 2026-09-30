@@ -699,3 +699,16 @@ MZM changes: pin `2bad2d8`; `mzm_ram_dispatch` drains after the observed stack h
 | wall, no-input, A/B same machine: 100 / 1000 / 6000 / 10000 frames | 4.75 / 45.6 / 274.6 / 477.6 s | 4.07 / 41.4 / 247.5 / 406.9 s |
 
 The NES no longer needs an extraordinary stack reserve (Windows default 1 MB has ~2x margin). Corpus regenerated twice: byte-identical. CTest 67/67, Python 37/37, harness 01/02/03 PASS, soak 2 x 10,000 identical, scripted NES -> death -> save -> quit -> SoftReset -> MZM: title frame 3500 `FC3C48FE5B3F402B`, gameplay visible at 5500, strict counters zero, Part 2 gate fails closed after the reset (`verify_fail` 3,043,560, `invoke_fail=0`, `no_corpus=0`).
+
+
+## GBARECOMP-FIFO-DMA-1 (sound-FIFO DMA semantics, NES audio to the host)
+
+GBARecomp `0b9d032` (branch `mzm/mzm-integration-fifo-dma`, three commits on `2bad2d8`; `arm-recomp-core` `efbfe13`).
+
+Root cause: `run_sound_fifo_dma` returned when `CNT_H` bit 10 was clear. `0xB200` = enable (15), IRQ off (14), start timing 3 = special/FIFO (13..12), bit 11 and bit 10 clear, repeat (9), source increment (8..7), dest control 0 (6..5). Hardware (GBATEK "Sound DMA", mGBA) forces 32-bit, a fixed FIFO destination and a 4-word burst for DMA1/DMA2 in this mode; bit 10, dest control and `CNT_L` do not apply, DMA0 cannot use it, DMA3's special timing is video capture. The fix models that as FIFO-mode execution semantics and leaves the guest-visible register untouched; requests now route by the FIFO address a channel points at, and a channel without repeat disables after its burst. Synthetic, ROM-free tests in upstream `dma_tests` (RED: `0xB200` made 0 runs and 0 writes; GREEN after) cover width, data order, FIFO A and B, all four dest-control values, CNT_L variants, repeat/no-repeat, routing, DMA0/DMA3 exclusion, the completion IRQ, and ordinary 16/32-bit immediate/VBlank/HBlank controls.
+
+Result (no force bit; `MZM_NES_DIAG_FORCE_FIFO32` deleted from the test): 1,900-frame scripted run: `WriteToApu` 5,887, `Timer1Callback` 6,473, DMA1 64,737 runs / 258,948 words, 1,544,874 non-zero of 2,077,444 host samples. The 6,000-frame chain (NES -> death -> save -> quit -> SoftReset -> MZM title 3500 `FC3C48FE5B3F402B` -> MZM gameplay 5500) is frame-for-frame identical to the pre-fix build (hashes, strict counters 0, host stack 458,960 vs 458,640 B, wall 136.9 vs 134.2 s); only the audio differs. Stack limits unchanged (576 KiB pass, 512 KiB segfault). DMA2 in these runs is MZM's own HBlank DMA (`0xA260`), not a FIFO.
+
+Audio status: structural PASS, host activity PASS, accuracy PARTIAL (no oracle or listening; output is non-constant, in range, time-varying, not proven correct).
+
+Windows Beta 2 prerequisites: host stack bounded, FIFO audio reaches the host, end-to-end chain green. Still open: save/load round trip and a Windows-specific smoke.
