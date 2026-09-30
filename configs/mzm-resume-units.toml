@@ -32,3 +32,38 @@ start = 0x080051D4
 end = 0x08005368
 mode = "thumb"
 reason = "sram.c: MZM save init reads/writes/verifies all 32 KiB SRAM byte by byte with wait states over several frames; includes the two routines the game copies to the stack (first misses 0x080051EE, 0x08005280)"
+
+[[resume_unit]]
+name = "InitializeAudio"
+start = 0x08002564
+end = 0x080027F8
+mode = "thumb"
+reason = "audio engine setup after the NES quit restarts MZM; runs across a frame boundary (first miss 0x0800271C). Audited: 14 generated functions (root + bl continuations), 260 instructions ending at 0x0800276A then literal pool; no SWI/MSR/MRS, one BL pair, ldm/stm on r13 are single blocks; MMIO SOUNDCNT/DMA3/IE only"
+
+[[resume_unit]]
+name = "RoomSetInitialTilemap"
+start = 0x08056B28
+end = 0x08056D18
+mode = "thumb"
+reason = "room load: nested CPU loops writing the BG tilemap outlast a frame (first miss 0x08056C50; ablation: without the unit the NES-3 loader chain fails with LZ77 did not return to loader continuation). Audited: 20 generated functions, 220 instructions, BL pairs + ldm/stm on r13 + one bx return, no SWI/MSR/MRS"
+
+[[resume_unit]]
+name = "RoomRleDecompress"
+start = 0x08056D18
+end = 0x08056E28
+mode = "thumb"
+reason = "room load: RLE decompression of room data to RAM outlasts a frame (first miss 0x08056D90; ablation: without the unit the NES-3 chain misses at frame 3202). Audited: 22 generated functions, 133 instructions, one BL pair, ldm/stm on r13 and one bx return, no SWI/MSR/MRS"
+
+[[resume_unit]]
+name = "InitAndLoadGenerics"
+start = 0x0800CBAC
+end = 0x0800CDE8
+mode = "thumb"
+reason = "boot graphics load: 20 BL calls (DMA/decompress) per pass outlast a frame (first miss 0x0800CC68; ablation: without the unit the NES-3 loader chain fails with LZ77 did not return to loader continuation). Audited: 29 generated functions, 219 instructions, contract holds, no SWI/MSR/MRS"
+
+[[resume_unit]]
+name = "BitFill"
+start = 0x080032B4
+end = 0x08003380
+mode = "thumb"
+reason = "DMA-based fill/clear utility used across the game; each DMA3 chunk outlasts a frame (first miss 0x0800331A, the read-back after the DMA start; ablation: without the unit the NES-3 post-reset run stops at frame 4390 at this PC, caller 0x08056D57). Audited: 9 generated functions, 95 instructions, three literal pools inside the range (not published), ldm/stm on r13 and one bx r0 return only; registers r8-r12 live in g_cpu"
