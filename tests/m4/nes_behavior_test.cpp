@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+#include <sys/resource.h>
+
 #include "gba_bios.h"
 #include "gba_bus.h"
 #include "gba_io.h"
@@ -116,6 +118,18 @@ struct Part1WriteWatch final : gba::BusWriteObserver {
 };
 Part1WriteWatch g_p1_watch;
 gba::GbaPpu* g_watch_ppu = nullptr;
+
+// NES-3c: SRAM helper copied to the stack. Read-only observer around each run;
+// prints one line per entry/exit (a handful per session) and keeps the last
+// return value. SRAM contents themselves are audited through save().dirty().
+gba::GbaPpu* g_log_ppu = nullptr;
+std::uint64_t g_helper_events = 0;
+void on_stack_helper(const mzm_stack_helper_event_t& e) {
+    ++g_helper_events;
+    std::printf("NES3 stack_helper %s frame=%llu %s pc=0x%08X r0=0x%08X r1=0x%08X r2=0x%08X r3=0x%08X sp=0x%08X lr=0x%08X\n",
+                e.name, (unsigned long long)(g_log_ppu ? g_log_ppu->frame_count() : 0), e.exit ? "exit" : "enter",
+                e.pc, e.r0, e.r1, e.r2, e.r3, e.sp, e.lr);
+}
 
 void fail(const char* message) {
     std::fprintf(stderr, "NES-3 FAIL: %s\n", message);
@@ -208,6 +222,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "usage: %s <mzm_usa.gba> <gba_bios.bin> [nes-emulator-dir]\n", argv[0]);
         return 2;
     }
+    const std::uintptr_t stack_base = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
     const std::string emu_dir = argc > 3 ? argv[3] : MZM_NES_EMULATOR_DIR;
     const std::uint64_t max_frames = std::strtoull(env_or("MZM_NES_FRAMES", "1300").c_str(), nullptr, 10);
     const std::uint64_t ckpt_every = std::strtoull(env_or("MZM_NES_CHECKPOINT", "500").c_str(), nullptr, 10);
@@ -272,6 +287,8 @@ int main(int argc, char** argv) {
     }
     mzm_set_nes_payload_frontier_stop(false);
     mzm_set_nes_emulator_frontier_hook(on_frontier);
+    g_log_ppu = &ppu;
+    mzm_set_stack_helper_observer(on_stack_helper);
     // Installed only after the payload loaded the images (Phase A), so the
     // recorded stores are the emulator's own, not the load.
     const bool watch_p1_writes = env_or("MZM_NES_WATCH_IMAGE_WRITES", "0") == "1";
@@ -576,11 +593,40 @@ int main(int argc, char** argv) {
         for (const auto& kv : g_p1_watch.p6_writer_pcs)
             std::printf("NES3 p6_writer pc=0x%08X changes=%llu\n", kv.first, (unsigned long long)kv.second);
     }
+    {   // Final SRAM diff against the erased (0xFF) start: which bytes the save wrote.
+        const auto now = bus.save().sram_bytes();
+        std::printf("NES3 sram_diff");
+        std::size_t total = 0;
+        for (std::size_t i = 0; i < now.size() && i < sram0.size();) {
+            if (now[i] == sram0[i]) { ++i; continue; }
+            std::size_t j = i;
+            while (j < now.size() && j < sram0.size() && now[j] != sram0[j]) ++j;
+            std::printf(" [0x%04zX,0x%04zX)", i, j);
+            total += j - i;
+            i = j;
+        }
+        std::printf(" changed_bytes=%zu\n", total);
+    }
     std::printf("NES3 sram write_frames=%llu dirty=%d\n", (unsigned long long)sram_write_frames,
                 bus.save().dirty() ? 1 : 0);
     std::printf("NES3 depth max_host=%llu max_irq=%llu final_host=%u final_irq=%u\n",
                 (unsigned long long)max_call_depth, (unsigned long long)max_irq_depth,
                 runtime_call_stack_depth(), g_irq_nest_depth);
+    {
+        mzm_stack_helper_stats_t hs[4];
+        std::uint64_t rejects = 0;
+        const std::size_t nh = mzm_stack_helper_stats(hs, 4, &rejects);
+        for (std::size_t i = 0; i < nh; ++i)
+            std::printf("NES3 stack_helper_stats %s attempts=%llu matches=%llu mirror_matches=%llu\n", hs[i].name,
+                        (unsigned long long)hs[i].attempts, (unsigned long long)hs[i].matches,
+                        (unsigned long long)hs[i].mirror_matches);
+        std::printf("NES3 stack_helper_rejects=%llu\n", (unsigned long long)rejects);
+        rlimit rl{};
+        getrlimit(RLIMIT_STACK, &rl);
+        const std::uintptr_t low = mzm_ram_dispatch_stack_low();
+        std::printf("NES3 host_stack limit=%llu hook_depth_bytes=%llu\n", (unsigned long long)rl.rlim_cur,
+                    low == ~static_cast<std::uintptr_t>(0) ? 0ull : (unsigned long long)(stack_base - low));
+    }
     std::printf("NES3 strict dispatch_misses=%llu interpreted_insns=%llu unmapped=%llu "
                 "io_unhandled=%llu self_heal=disabled\n", (unsigned long long)m,
                 (unsigned long long)ii, (unsigned long long)u, (unsigned long long)io);

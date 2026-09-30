@@ -6,10 +6,12 @@ Drives tests/m4/nes_behavior_test.cpp (NES-3 behavioural qualification).
     ctl      START (title -> menu), START (menu -> game); no other input
     flow     same + SELECT round trip in the menu, RIGHT held and A in the game
     frontier a longer scripted play session; PINS the current first frontier
-             (see docs/M4-NES-METROID.md, NES-3b): the Game Over / password / SRAM
-             save path copies Part 6 SramCheckInternal to the stack and calls it
-             at 0x03827110 (Thumb). Before it, Part 1 resident handlers are
-             re-entered natively after the init half was overwritten by graphics.
+             (see docs/M4-NES-METROID.md, NES-3b/3c): Game Over -> password -> save
+             runs the copied SramCheckInternal natively at the IWRAM alias
+             0x03827110, SaveToSram writes SRAM, the emulator quits through the
+             loader reset stub and MZM's ROM restarts; the first miss is then
+             0x080006CA (InitializeGame interior). Part 1 resident handlers are
+             re-entered natively after the init half was overwritten.
   soak: two runs of N (default 10000) no-input frames; compares every "NES3 " line
 
 Input is injected by the test through bus.io().set_keyinput() (the production
@@ -78,7 +80,7 @@ def qualify(binary, rom, bios):
         "ctl": dict(common, MZM_NES_INPUT="700:START:8,1000:START:8"),
         "flow": dict(common, MZM_NES_INPUT="700:START:8,800:SELECT:8,900:SELECT:8,1000:START:8,"
                                             "1650:RIGHT:100,1800:A:25"),
-        "frontier": {"MZM_NES_FRAMES": 3400, "MZM_NES_CHECKPOINT": 1000, "MZM_NES_HASH_FRAMES": "1300",
+        "frontier": {"MZM_NES_WATCH_IMAGE_WRITES": 1, "MZM_NES_FRAMES": 3400, "MZM_NES_CHECKPOINT": 1000, "MZM_NES_HASH_FRAMES": "1300",
                      "MZM_NES_INPUT": "700:START:8,1000:START:8," + ",".join(play)},
     }
     with ThreadPoolExecutor(max_workers=3) as ex:
@@ -100,12 +102,27 @@ def qualify(binary, rom, bios):
     print("== frontier pin (scripted play session)")
     check(fr[0] == 3, "frontier run exits 3 (stall/miss)", failures)
     stall = next((l for l in fr[1] if l.startswith("NES3 STALL")), "")
-    check("frame=3111" in stall and "misses=1" in stall, "first frontier at frame 3111 (" + stall[:70] + ")", failures)
+    check("frame=3205" in stall and "misses=1" in stall, "first frontier at frame 3205 (" + stall[:70] + ")", failures)
     misses = next((l for l in fr[1] if l.startswith("NES3 stop_misses")), "")
-    check('"pc":"0x03827110"' in misses and '"mode":"thumb"' in misses and '"distinct_misses":1' in misses,
-          "first (only) miss is the stack-resident Thumb routine 0x03827110", failures)
-    check(any(l.startswith("NES3 stop_miss_source") and "part6 image offset 0x7BC" in l for l in fr[1]),
-          "its bytes are a run-time copy of Part 6 0x0203E7BC (SramCheckInternal)", failures)
+    check('"pc":"0x080006CA"' in misses and '"mode":"thumb"' in misses and '"distinct_misses":1' in misses,
+          "first (only) miss is MZM ROM 0x080006CA Thumb (InitializeGame interior, after the NES emulator quit)", failures)
+    print("== copied SRAM helper (NES-3c)")
+    helper = [l for l in fr[1] if l.startswith("NES3 stack_helper ") and "SramCheckInternal" in l]
+    enters = [l for l in helper if " enter " in l]
+    exits = [l for l in helper if " exit " in l]
+    check(len(enters) == 2 and all("pc=0x03827110" in l for l in enters),
+          "SramCheckInternal entered twice through the IWRAM alias 0x03827110", failures)
+    check(len(exits) == 2 and all("r0=0x00000000" in l for l in exits),
+          "both checks return 0 (the SRAM write verified)", failures)
+    check(any(l.startswith("NES3 stack_helper_stats SramCheckInternal attempts=2 matches=2 mirror_matches=2") for l in fr[1]),
+          "resolver counted 2 verified mirror matches", failures)
+    check("NES3 stack_helper_rejects=0" in fr[1], "no in-window entry was rejected", failures)
+    check(any(l.startswith("NES3 sram_diff [0x7FD8,0x8000) changed_bytes=40") for l in fr[1]),
+          "SaveToSram wrote exactly SRAM [0x7FD8,0x8000)", failures)
+    check(any(l.startswith("NES3 entries sram_SaveToSram") and l.endswith("=1") for l in fr[1]),
+          "EmulatorSaveToSram ran once", failures)
+    check(any("pc=0x087D813E" in l for l in fr[1] if l.startswith("NES3 stop_trace")),
+          "the emulator quit through the loader reset stub 0x087D813E", failures)
     print("== Part 1 resident re-entry (NES-3b)")
     p1 = next((l for l in fr[1] if l.startswith("NES3 part part1")), "")
     m1 = re.search(r"verified=(\d+) matches=(\d+) verify_fail=(\d+)", p1)
@@ -113,11 +130,17 @@ def qualify(binary, rom, bios):
           "Part 1 entered natively after init was overwritten, no gate failure (" + p1[15:] + ")", failures)
     p6 = next((l for l in fr[1] if l.startswith("NES3 part part6")), "")
     check("verify_fail=0" in p6, "Part 6 gate never failed (sPasswordBytes is excluded, the rest still gated)", failures)
-    bk = next((l for l in fr[1] if l.startswith("NES3 stop_buckets part1")), "")
-    resident = [int(x.split(":")[1]) for x in bk.split()[-5:]]
-    check(resident == [0, 0, 0, 0, 0],
-          "Part 1 resident half 0x06006E00..0x06007240 is intact (dirty bytes 0)", failures)
-    check("D00:192" in bk, "Part 1 init half was overwritten by graphics", failures)
+    chunks = {}
+    for l in fr[1]:
+        m = re.match(r"NES3 p1_write chunk=0x([0-9A-F]+) first_frame=(\d+) first_pc=0x([0-9A-F]+)", l)
+        if m:
+            chunks[int(m.group(1), 16)] = (int(m.group(2)), int(m.group(3), 16))
+    before_quit = {a: v for a, v in chunks.items() if v[0] < 3200}
+    check(len(before_quit) == 54 and max(before_quit) < 0x06006DC0 and all(v[0] <= 20 for v in before_quit.values()),
+          "before the quit only 54 chunks of [0x06006000,0x06006DC0) were stored to, all from frames 12..18 (graphics)", failures)
+    after_quit = {a: v for a, v in chunks.items() if v[0] >= 3200}
+    check(all(v[1] == 0x0C08 for v in after_quit.values()) and 0x06006E00 in after_quit and 0x06007200 in after_quit,
+          "the resident half [0x06006E00,0x06007240) was first stored to only after the quit, by the BIOS reset (PC 0x00000C08)", failures)
     if failures:
         print(f"NES-3 qualify FAIL ({len(failures)})")
         return 1

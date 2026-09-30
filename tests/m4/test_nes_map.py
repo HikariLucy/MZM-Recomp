@@ -185,6 +185,43 @@ class CanonicalMapTests(unittest.TestCase):
         hdr = HEADER.read_text()
         self.assertIn("{0x0203E000u, 0x0203E43Cu},\n    {0x0203E44Eu, 0x0203E8E0u},", hdr)
 
+    @unittest.skipUnless((PARTS / "part6.bin").exists(), "ROM-extracted parts not present")
+    def test_copied_sram_helpers_are_position_independent_and_sized_by_symbols(self):
+        # NES-3c. SramWriteUnchecked/SramCheck copy [XInternal, X) to the stack and
+        # call it there. The resolver runs the already generated ROM translation
+        # for any destination, which is only sound if the body never depends on
+        # its own address: no pc-relative load / ADR / add-mov pc, no BL/BLX, and
+        # every branch stays inside the copied bytes.
+        img = next(i for i in load() if i["part"] == "part6")
+        blob = (PARTS / "part6.bin").read_bytes()
+        base = img["load_address"]
+        seeds = sorted(img["seeds_thumb"])
+        for name, start, size in (("SramWriteUncheckedInternal", 0x0203E6F4, 0x24),
+                                  ("SramCheckInternal", 0x0203E7BC, 0x30)):
+            # copy size = next function symbol - start (what `csize` computes)
+            self.assertIn(start, seeds, name)
+            self.assertEqual(seeds[seeds.index(start) + 1] - start, size, name)
+            body = blob[start - base:start - base + size]
+            for off in range(0, size, 2):
+                hw = int.from_bytes(body[off:off + 2], "little")
+                where = f"{name}+0x{off:X} ({hw:04X})"
+                self.assertNotEqual(hw & 0xF800, 0x4800, "pc-relative ldr " + where)
+                self.assertFalse(0xA000 <= hw <= 0xA7FF, "add rd,pc (ADR) " + where)
+                self.assertNotIn(hw & 0xF800, (0xF000, 0xF800, 0xE800), "BL/BLX " + where)
+                if (hw & 0xFC00) == 0x4400:   # hi-register ops / BX
+                    rs, rd = (hw >> 3) & 0xF, (hw & 7) | ((hw >> 4) & 8)
+                    self.assertNotEqual(rs, 15, "pc source " + where)
+                    if (hw & 0x0300) != 0x0300:   # ADD/CMP/MOV, not BX
+                        self.assertNotEqual(rd, 15, "pc destination " + where)
+                if (hw & 0xF000) == 0xD000 and (hw >> 8) & 0xF < 0xE:
+                    tgt = off + 4 + (((hw & 0xFF) ^ 0x80) - 0x80) * 2
+                    self.assertTrue(0 <= tgt < size, "branch leaves the copy " + where)
+                if (hw & 0xF800) == 0xE000:
+                    tgt = off + 4 + (((hw & 0x7FF) ^ 0x400) - 0x400) * 2
+                    self.assertTrue(0 <= tgt < size, "branch leaves the copy " + where)
+            # returns through a popped LR, never through a fixed address
+            self.assertEqual(int.from_bytes(body[0:2], "little") & 0xFE00, 0xB400)   # push {...,lr}
+
     def test_scopes_do_not_reach_the_gbarecomp_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "cfg.toml"

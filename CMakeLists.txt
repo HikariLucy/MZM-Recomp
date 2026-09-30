@@ -186,6 +186,24 @@ if(BUILD_TESTING)
                 MZM_NES_EMULATOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.local/nes-emulator")
             add_test(NAME mzm-nes-scope-policy COMMAND mzm_nes_scope_policy_test)
 
+            add_executable(mzm_nes_stack_helper_test
+                tests/m4/nes_stack_helper_test.cpp
+                src/mzm_ram_dispatch.cpp
+                src/mzm_milestone_probe.cpp
+                $<TARGET_OBJECTS:mzm_generated_objects>)
+            target_include_directories(mzm_nes_stack_helper_test PRIVATE
+                src generated
+                "${GBARECOMP_ROOT}/src/armv4t"
+                "${GBARECOMP_ROOT}/src/gba"
+                "${GBARECOMP_ROOT}/src/runtime")
+            target_link_libraries(mzm_nes_stack_helper_test PRIVATE
+                "-Wl,--start-group" gbarecomp_runtime gbarecomp_debug
+                gbarecomp_gba gbarecomp_armv4t "-Wl,--end-group")
+            target_compile_definitions(mzm_nes_stack_helper_test PRIVATE
+                MZM_NES_EMULATOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.local/nes-emulator")
+            add_test(NAME mzm-nes-stack-helper
+                COMMAND mzm_nes_stack_helper_test "${MZM_TEST_ROM}")
+
             add_executable(mzm_nes_behavior_test
                 tests/m4/nes_behavior_test.cpp
                 src/mzm_ram_dispatch.cpp
