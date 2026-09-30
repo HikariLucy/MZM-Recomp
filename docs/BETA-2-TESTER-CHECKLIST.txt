@@ -1,0 +1,19 @@
+MZM Recompiled Beta 2 - tester checklist (mark PASS / FAIL / not tried)
+
+[ ] Launcher opens (Windows version / GPU noted)
+[ ] Game file accepted as "Valid"
+[ ] BIOS accepted as "Valid"
+[ ] PLAY starts Metroid: Zero Mission and reaches the title screen
+[ ] Start a new game or load a save; saving works
+[ ] 20-30 minutes of normal gameplay without a crash or visible glitch
+[ ] Controls respond (keyboard and/or controller)
+[ ] Sound plays on your speakers/headphones (note crackling or dropouts)
+[ ] Close the game and reopen: launcher remembers the files, save still there
+[ ] Options > enter the Original Metroid (NES) if your save has it unlocked
+[ ] NES title appears, START works, you can move and shoot, NES sound plays
+[ ] Die in the NES, answer YES to save the password
+[ ] Quit the NES: the game returns to the Zero Mission title screen
+[ ] Zero Mission plays normally again after the NES
+[ ] Enter the NES again: CONTINUE shows the password you saved
+[ ] Closing the window exits cleanly
+[ ] Report bugs with latest.log, mzm-recompiled.log and BUILD-INFO.txt

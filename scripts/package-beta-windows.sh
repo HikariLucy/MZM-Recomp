@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export LC_ALL=C  # objdump output is parsed; locale must not translate it
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${MZM_WINDOWS_BUILD_DIR:-$REPO/build-windows}"
-DEST="${MZM_WINDOWS_PACKAGE_DIR:-$REPO/dist/MZMRecompiled-Beta-Windows}"
-ZIP="$DEST.zip"
+DEST="${MZM_WINDOWS_PACKAGE_DIR:-$REPO/dist/MZMRecompiled-Beta-2-Windows-x64}"
+# MZM_WINDOWS_SMOKE: PASS only after a real Windows x86_64 run of the smoke
+# list. Anything else marks the archive as an unverified candidate.
+SMOKE="${MZM_WINDOWS_SMOKE:-PENDING}"
+if [[ "$SMOKE" == PASS ]]; then ZIP="$DEST.zip"; else ZIP="$DEST-RUNTIME-UNVERIFIED.zip"; fi
 EXE="$BUILD/MZMRecomp.exe"
 DLL_DIR="${MZM_WINDOWS_DLL_DIR:-$BUILD}"
 LICENSE_DIR="${MZM_WINDOWS_LICENSE_DIR:-}"
@@ -47,7 +51,8 @@ cp "$REPO/assets/icons/mzm-recompiled.bmp" "$STAGE/assets/icons/"
 cp "$REPO/assets/icons/mzm-recompiled.ico" "$STAGE/assets/icons/"
 cp "$REPO/assets/icons/mzm-brand-helm-core.png" "$STAGE/assets/icons/"
 cp "$REPO/configs/mzm-us.toml" "$STAGE/configs/"
-cp "$REPO/docs/BETA-TESTING.md" "$STAGE/README.md"
+cp "$REPO/docs/BETA-2-WINDOWS-README.txt" "$STAGE/README.txt"
+cp "$REPO/docs/BETA-2-TESTER-CHECKLIST.txt" "$STAGE/TESTER-CHECKLIST.txt"
 GBARECOMP_ROOT="${MZM_GBARECOMP_ROOT:-}"
 [[ -n "$GBARECOMP_ROOT" && -f "$GBARECOMP_ROOT/LICENSE" ]] \
     || fail 'set MZM_GBARECOMP_ROOT to the exact linked GBARecomp checkout (LICENSE required)'
@@ -57,7 +62,12 @@ cp "$REPO/recomp-ui/src/third_party/imgui/LICENSE.txt" \
     "$STAGE/THIRD-PARTY-LICENSES/Dear-ImGui.txt"
 sed -n '1,51p' "$REPO/recomp-ui/src/third_party/tinyfiledialogs.c" \
     > "$STAGE/THIRD-PARTY-LICENSES/tinyfiledialogs.txt"
-for dependency in arm-recomp-core rbengine recomp-net; do
+# rbengine/recomp-net are compiled only into the optional netplay adapter.
+DEPS=(arm-recomp-core)
+if grep -q '^GBARECOMP_NETPLAY:BOOL=ON' "$BUILD/CMakeCache.txt" 2>/dev/null; then
+    DEPS+=(rbengine recomp-net)
+fi
+for dependency in "${DEPS[@]}"; do
     [[ -f "$GBARECOMP_ROOT/external/$dependency/LICENSE" ]] \
         || fail "missing GBARecomp dependency license: $dependency"
     cp "$GBARECOMP_ROOT/external/$dependency/LICENSE" \
@@ -120,6 +130,38 @@ if rg -l -i --pcre2 '(/home/[^/[:space:]]+|C:[/\\]Users[/\\][^/\\[:space:]]+)' \
     fail 'local private path in packaged configuration'
 fi
 
+MZM_SHA="$(git -C "$REPO" rev-parse HEAD)"
+GBA_SHA="$(git -C "$GBARECOMP_ROOT" rev-parse HEAD)"
+CXX_BIN="${MZM_WINDOWS_CXX:-x86_64-w64-mingw32-g++}"
+STACK_RESERVE="$("$OBJDUMP" -p "$EXE" | awk '/SizeOfStackReserve/ {print $2}')"
+cat > "$STAGE/BUILD-INFO.txt" <<INFO
+MZM Recompiled Beta 2 (Windows x86_64)
+MZM commit:          $MZM_SHA$(git -C "$REPO" diff --quiet HEAD -- . 2>/dev/null || echo ' (+uncommitted changes)')
+GBARecomp commit:    $GBA_SHA
+Build date (UTC):    $(date -u +%Y-%m-%dT%H:%M:%SZ)
+Target:              Windows x86_64 (PE32+), console subsystem, cross-built on Linux
+Compiler:            $("$CXX_BIN" --version | head -n1) ($("$CXX_BIN" -dumpmachine))
+Build type:          Release
+MZMRecomp.exe SHA-256: $(sha256sum "$STAGE/MZMRecomp.exe" | cut -d' ' -f1)
+PE stack reserve:    0x$STACK_RESERVE (GBARecomp default, not raised by this build)
+CPU backend:         static-recompiled, strict-static requested by the launcher
+                     (GBARECOMP_STRICT_STATIC=1); no interpreter fallback
+Windows runtime smoke: $SMOKE
+Bundled DLLs:        $(cd "$STAGE" && ls *.dll | tr '\n' ' ')
+
+Known limitations
+- Beta. Audio activity is verified (non-silent samples); audio accuracy is NOT
+  verified against hardware or any oracle.
+- Save/load is qualified only for the tested NES route (SRAM round trip, no
+  game progress in the restored state) on the Linux harness.
+- Windows runtime behaviour (launcher, audio device, stack, Unicode paths) is
+  only as verified as the Windows runtime smoke line above states.
+- Paths containing characters outside your ANSI code page are not verified.
+- Saves are written beside the selected game file: keep it in a writable folder.
+- Only USA revision 0 and a canonical GBA BIOS are accepted.
+- Noncommercial use (PolyForm Noncommercial, see THIRD-PARTY-LICENSES).
+INFO
+
 rm -rf "$DEST"
 mv "$STAGE" "$DEST"
 trap - EXIT
@@ -128,6 +170,7 @@ rm -f "$tmp_zip"
 (cd "$(dirname "$DEST")" && zip -q -r "$tmp_zip" "$(basename "$DEST")")
 unzip -tq "$tmp_zip" >/dev/null || fail 'ZIP integrity check failed'
 mv "$tmp_zip" "$ZIP"
+echo "Windows runtime smoke: $SMOKE"
 echo "ROM: NO; BIOS: NO; SAVE: NO; GENERATED: NO; LOCAL PATHS: NO"
 echo "Package ready: $DEST"
 echo "ZIP ready: $ZIP"

@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    mzm::redirect_console_to_log();
     mzm_install_ram_dispatch_hook();
     mzm::log_event("start");
 

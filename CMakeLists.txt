@@ -132,9 +132,18 @@ if(WIN32)
     gbarecomp_target_link_host_stack(MZMRecomp PRIVATE)
 endif()
 
+execute_process(COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse HEAD
+    OUTPUT_VARIABLE MZM_GIT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET RESULT_VARIABLE MZM_GIT_RESULT)
+if(NOT MZM_GIT_RESULT EQUAL 0)
+    set(MZM_GIT_SHA "unknown")
+endif()
+
 target_compile_definitions(MZMRecomp PRIVATE
     GBARECOMP_WINDOW_TITLE="MZM-Recomp"
     MZM_VERSION="${PROJECT_VERSION}"
+    MZM_BUILD_SHA="${MZM_GIT_SHA}"
+    MZM_GBARECOMP_SHA="${MZM_GBARECOMP_HEAD}"
 )
 
 # The state tests use no game data and do not require generated code to run.
