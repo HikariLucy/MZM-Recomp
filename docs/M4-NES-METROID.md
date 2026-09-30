@@ -458,7 +458,9 @@ The first NES-3b build of `mzm_ram_dispatch` segfaulted (stack overflow) before 
 
 The first continued run then failed Part 6's gate at `0x0203E390` Thumb (`failed_scope=part6`): four bytes changed, `0x0203E448/449/44C/44D` (`0x80,0x02,0xC0,0x42`), written once at frame 3068 by `0x0203E31C`. They lie in `sPasswordBytes[18]` (`nes_metroid/emulator/src/part6.c`, first object of `part6.o .data`, zero-initialised, filled by `MemoryCopy`), i.e. exactly the 18-byte zero run `0x0203E43C..0x0203E44E` of the image, bounded by non-zero constants. That range (and only it) is now `[[image.mutable]]`; adjacent bytes and all code stay gated (unit-tested). It is the same class as Part 2's `.data`. Evidence is decomp source + extracted image + observed writer; the maintainer ELF oracle could not be re-run (the nested ELF is not on this machine and rebuilding it from `nes_metroid/emulator` failed at link, so `--compare` was not re-executed after this change; it does not compare mutable ranges).
 
-### New first frontier (frame 3111)
+### New first frontier (frame 3111) — superseded by NES-3c
+
+> **Superseded.** NES-3c (below) runs this helper natively; the session now continues to the emulator quit and stops at `0x080006CA`. Kept as history.
 
 Scripted session (`700:START, 1000:START`, then RIGHT / RIGHT+A / B / LEFT / A / DOWN / UP cycles every 240 frames from 1700). Samus dies, the game shows GAME OVER, then PASSWORD and `SAVE YOUR PROGRESS TO THE MEMORY? YES / NO` (inspected by eye), and the scripted `A` selects YES.
 
@@ -483,3 +485,86 @@ Two concurrent 14,000-frame-limit runs (both stop at the frontier) produced byte
 ### Validation
 
 CTest 63/63 (NES-1a, NES-1b, NES-2b, scope policy, behavior); Python 19/19 (unittest over `tests/m4`); M4 harness 01/02/03 PASS; soak (below) PASS; `git diff --check` PASS; GBARecomp `mzm/mzm-integration` untouched at `2c40fe8`.
+
+## NES-3c runtime-copied SRAM helper (2026-09-29): PASS, new frontier captured
+
+Status: **PASS** for the stated goal. The stack-copied `SramCheckInternal` at `0x03827110` now runs natively (no interpreter, no self-heal, no executable-stack wildcard), the save completes, the emulator quits and the ROM restarts. The session then stops at a **different** first miss, MZM ROM `0x080006CA` (below). Save/password stays PARTIAL, Audio stays PARTIAL/BLOCKED (not touched). GBARecomp unchanged at `2c40fe8539c566ce2aee7dce8a722917a6cf475c`; nothing pushed or merged.
+
+### Source helpers (audited, not assumed)
+
+The NES emulator's `sram.c` (`nes_metroid/emulator/src/sram/sram.c`) copies `[XInternal, X)` into a `u16 code[]` on the stack and calls `code + 1` through `_call_via_r3` (Part 6 `0x0203E8B0`, `bx r3`).
+
+| helper | source in Part 6 | mode | size | SHA-256 | identical to |
+|---|---|---|---|---|---|
+| `SramCheckInternal` | `[0x0203E7BC, 0x0203E7EC)` | Thumb | `0x30` | `27fc0ae48fc8b1d2a213b08ab67ca56f7c4bb96fbb84279bb9238c4526782fb8` | MZM ROM `0x0800529C` |
+| `SramWriteUncheckedInternal` | `[0x0203E6F4, 0x0203E718)` | Thumb | `0x24` | `1818db03109c2c0fbbd414c8303ad6ef4cecc64cf6029759023f6ba48e6ff8d3` | MZM ROM `0x080051D4` |
+
+Copy size is computed by the code, not read from a register: `csize = ((SramCheck|1) - (SramCheckInternal|1)) << 15 >> 16` halfwords = `0x18` halfwords = `0x30` bytes (literals at `0x0203E820/824`). The `r2 = 0x18` seen at the miss is a different value that happens to be equal: it is SramCheck's *size argument* (`EmulatorSaveToSram` checks `0x18` bytes at SRAM `0x0E007FE8`, then `0x10` at `0x0E007FD8`). The last two bytes of the `0x30` are zero padding and are part of the verified image. No bytes are committed; `part6.bin` is derived from the legal ROM by the existing pipeline and the identity is a test (`mzm-nes-stack-helper`, `test_nes_map.py`).
+
+### Runtime copy: destination is not a constant
+
+Destination = `sp` after SramCheck's `sub sp,#192`, i.e. `S - frames`, where `S` is the emulator's stack alias. Measured / derived:
+
+| path | frames below `S` | `S` | destination |
+|---|---|---|---|
+| `EmulatorSaveToSram` -> `SramWriteChecked` -> `SramCheck` (observed, save YES) | `12 + 20 + 16 + 192 = 0xF0` | `0x03827200` | **`0x03827110`** |
+| `sub_0203E3AC` -> `SramWriteChecked` -> `SramCheck` (derived, not reached) | `8 + 20 + 208 = 0xEC` | `0x03827200` | `0x03827114` |
+| `EmulatorLoadFromSram` -> `SramWriteUnchecked` at boot (observed) | `12 + 16 + 128 = 0x9C` | `0x03007200` | **`0x03007164`** |
+
+So the destination depends on the call path AND on which alias of the same physical stack the emulator is using (`0x03007200` at boot, `0x03827200` after). Compiling only `0x03827110` would not be a general solution and was not done. Stability: two identical 14,000-frame-limit runs give byte-identical output; the destinations above repeat exactly.
+
+### IWRAM mirror semantics (checked in the bus)
+
+IWRAM is `0x8000` bytes mirrored through `0x03000000..0x03FFFFFF`; `0x03827110` -> physical offset `0x7110` (= `0x03007110`). The bus reads/writes through the mirror (the live bytes at `0x03827110` were read directly). `runtime_dispatch` does **not** canonicalise: `pc = target & ~1` is the raw logical PC and only `[0x02000000,0x04000000)` reaches the RAM hook. Consequently the guest PC/LR/`sp` stay the logical alias (`sp=0x03827110`, `lr=0x0203E849`), and only the *window test* uses the physical offset.
+
+### Position dependence
+
+Full inventory of the `0x30` bytes (`objdump -Mforce-thumb`): `push {r4,r5,lr}`, register moves/`subs`/`negs`, one byte loop (`ldrb` x2, `adds`, `cmp`, `beq`/`bne`), `pop {r4,r5}; pop {r1}; bx r1`, padding. No pc-relative `ldr`, no ADR, no `add/mov ... pc`, no BL/BLX, no literal pool; the four branches land inside the copy; it returns through the popped LR; it only *reads* SRAM/EWRAM (no stores). `SramWriteUncheckedInternal` is the same shape (stores to its destination argument). `tests/m4/test_nes_map.py::test_copied_sram_helpers_are_position_independent_and_sized_by_symbols` decodes both and fails on any pc-relative/BL/escaping branch, and derives the copy sizes from the map's function seeds. The *callers* (`SramCheck`, `SramWriteUnchecked`) are position-dependent (five pc-relative loads, a BL) and are ordinary native Part 6 code at `0x0203E7EC` / `0x0203E718`, untouched.
+
+### Chosen architecture
+
+Reuse the mechanism MZM already has for its own identical helpers (`kStackHelpers` in `src/mzm_ram_dispatch.cpp`): the live bytes at the entry PC are compared with the exact ROM source (`0x0800529C`, `0x080051D4`) on **every** entry and, if equal, the already generated native translation of that ROM function runs. That is sound because the body is position-independent, and it is exactly what a destination *family* needs. Alternatives and why not:
+
+- A `source_addr` private relocation and C (an `[[executable_image]]` overlay at the destination): one generated body per destination, but the destination set is path- and alias-dependent (table above) and only partly reachable; each new path would need a new image plus a new corpus. Also no NES-specific code is involved: the bytes are MZM's own.
+- B `code_copy`: fixed-address ROM->RAM copies, not stack-relative.
+- D a new mechanism / GBARecomp change: not needed, so none was made.
+
+The one real defect was the resolver's destination model. It accepted a raw PC in `[0x03007000, 0x03007E60)` and no other; the NES emulator later uses the alias `0x0382xxxx`. It now tests the **physical** offset (`pc & 0x7FFF` in `[0x7000, 0x7E60)`, region `0x03`, copy must not cross the page), requires a **Thumb** entry (it did not check the mode before), and keeps the per-entry byte gate. Everything else (source bytes, exclusion of fixed IWRAM copies below `0x7000`, no publication) is unchanged.
+
+### Byte gate and tests
+
+Policy: PC in window + Thumb + live bytes == ROM source, checked at every entry (no latch: the stack is reused). `mzm-nes-stack-helper` (`tests/m4/nes_stack_helper_test.cpp`, needs the ROM, no game run) covers, for four destinations (`0x03827110`, `0x03827114`, `0x03007164`, `0x03A07188`): exact bytes run and the copied body computes the right result (`r0 == 0` for equal buffers, `&dest[9]` for a differing byte); return goes to LR and no ROM source PC leaks; alias matches are counted as mirror matches; the helper is not in ordinary dispatch (`runtime_has_static_entry == 0`); all 48 one-byte mutations are rejected; restoring re-admits (no latch); wrong mode, truncated copy (`0x20` of `0x30`), bytes below the window, bytes in EWRAM and bytes shifted by one halfword are rejected; `SramWriteUncheckedInternal` copies correctly at an alias and at the direct address. Zero-padding note: a truncated copy whose missing tail is already zero would equal the padding and be accepted; that is identity by bytes, and the test uses a non-zero stale tail.
+
+### Private corpus
+
+No corpus change, no new root or resume: the bodies are MZM's existing public ROM functions `gf_SramCheckInternal` / `gf_SramWriteUncheckedInternal`, reachable from the stack only through the byte-verifying hook. An IRQ inside the body resumes in the ROM translation (its PCs are ROM addresses), which is equivalent because the body never reads its own address; it does not re-enter the stack bytes.
+
+### Old frontier and SRAM behaviour
+
+`0x03827110` no longer misses: two verified entries (`mirror_matches=2`, `stack_helper_rejects=0`). `SramCheckInternal(src=0x0201C010, dst=0x0E007FE8, n=0x18)` and `(0x0201C000, 0x0E007FD8, 0x10)` both return `r0 = 0` (SRAM equals what was just written). Before them the native Part 6 `SramWrite` stored `SRAM [0x7FD8,0x8000)` (40 bytes; first sampled at frame 3120; `dirty=1`). `EmulatorSaveToSram` ran once. Boot also runs `SramWriteUncheckedInternal` twice at `0x03007164` (`LoadFromSram`, SRAM `0x7FB0` and `0x7FD8` -> EWRAM `0x0201C000`, erased). So: **SramCheck PASS**, save write and verify observed; a save/load round trip (second boot reading the saved data) and the password screen contents are not verified, so Save/password stays PARTIAL.
+
+### Continued execution and the new first frontier
+
+The chain ran to completion: start -> Brinstar -> death -> GAME OVER -> PASSWORD -> save YES -> `SaveToSram` -> emulator exit (`0x0600ED28`) -> loader reset stub `0x087D813E` -> ROM restart. The first miss is then:
+
+| field | value |
+|---|---|
+| frame | 3245 (14,000-frame-limit script) / 3205 (CTest script, extra START at 3010) |
+| PC / mode | `0x080006CA` Thumb |
+| owner | MZM ROM `InitializeGame` interior (`ldr r1,[r0,#8]`), public corpus; not a Part |
+| caller | `lr = 0x08000243` at the miss |
+| CPU at the miss | `sp = 0x03007E44`, `cpsr = 0x3F` (Thumb, system) |
+| CPU at the stall | `r0=0x05001F80 r1=0x85001F80 r2=0x03007E44 r13=0x03007E44 r14=0x080006E3 r15=0x080009A0 cpsr=0x3F` |
+| counters | 1 miss, 12 interpreted instructions, `unmapped=0`, `io_unhandled=0`, resolver failures 0, host return depth 0, IRQ depth 0 |
+
+This is the known interior-PC vblank-yield artifact already recorded in the compatibility matrix (`InitializeGame` interior PC absent from the dispatch table), now reached from the other side (after the NES quit). It is generic and not NES-specific and was not addressed. Before it: ~2,100 gameplay frames + the save + the exit ran with `dispatch_misses=0`, `interpreted_insns=0`, `unmapped=0`, `io_unhandled=0`, self-heal disabled. The old frontier's frame number is not comparable: the request to run 10,000 frames after gameplay start ends at the quit because the NES session ends there.
+
+Diagnostic (not a qualification): with `GBARECOMP_YIELD_ON_VBLANK=0` the run segfaults, because the NES emulator's native recursion relies on the vblank yield to unwind.
+
+### Host stack audit (separate risk, not fixed)
+
+Measured with the hook's lowest frame address (`mzm_ram_dispatch_stack_low`, `NES3 host_stack` line): the native recursion through `mzm_ram_dispatch` reaches **5,711,952 bytes within 20 frames and 5,768,000 bytes from frame 300**, then stays flat to the end (frames 300/1200/2500/3245 identical, hook depth 5,768,000). Limit sweep at 300 frames: 8192 KB pass, 6144 KB pass, 5888 KB pass, **5632 KB segfault**. Default `ulimit -s` is 8 MB, so the margin is about 2.4 MB (~29%). The hook frame is `0x88` bytes (unchanged by NES-3c; the helper runs out of line). The recursion is Part 2's (`0x030056E8 -> 0x03005754 -> 0x03005794`, ~35,000 generated frames), reached at boot, and it is bounded by the vblank yield. The margin is **narrow and compiler-/flag-dependent**: any frame growth on that path (as happened in NES-3b) can cross it. Not fixed here (no `ulimit` change, no refactor). Recommended separate milestone **HOST-STACK**: iterative dispatch or a bounded/guarded native depth for the Part 2 recursion, with a CTest that runs the soak at a reduced stack limit.
+
+### Validation
+
+CTest 64/64 (new: `mzm-nes-stack-helper`); Python 20/20; M4 01/02/03 PASS; NES-1a/1b/2b/3b PASS; scope policy PASS; soak PASS (2 x 10,000 frames identical); `git diff --check` PASS; GBARecomp `mzm/mzm-integration` untouched at `2c40fe8`.
