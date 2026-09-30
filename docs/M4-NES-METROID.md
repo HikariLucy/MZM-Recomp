@@ -486,7 +486,7 @@ Two concurrent 14,000-frame-limit runs (both stop at the frontier) produced byte
 
 CTest 63/63 (NES-1a, NES-1b, NES-2b, scope policy, behavior); Python 19/19 (unittest over `tests/m4`); M4 harness 01/02/03 PASS; soak (below) PASS; `git diff --check` PASS; GBARecomp `mzm/mzm-integration` untouched at `2c40fe8`.
 
-## NES-3c runtime-copied SRAM helper (2026-09-29): PASS, new frontier captured
+## NES-3c runtime-copied SRAM helper (2026-09-29): PASS, new frontier captured (superseded past the ROM restart by M4-RESUME-1)
 
 Status: **PASS** for the stated goal. The stack-copied `SramCheckInternal` at `0x03827110` now runs natively (no interpreter, no self-heal, no executable-stack wildcard), the save completes, the emulator quits and the ROM restarts. The session then stops at a **different** first miss, MZM ROM `0x080006CA` (below). Save/password stays PARTIAL, Audio stays PARTIAL/BLOCKED (not touched). GBARecomp unchanged at `2c40fe8539c566ce2aee7dce8a722917a6cf475c`; nothing pushed or merged.
 
@@ -568,3 +568,60 @@ Measured with the hook's lowest frame address (`mzm_ram_dispatch_stack_low`, `NE
 ### Validation
 
 CTest 64/64 (new: `mzm-nes-stack-helper`); Python 20/20; M4 01/02/03 PASS; NES-1a/1b/2b/3b PASS; scope policy PASS; soak PASS (2 x 10,000 frames identical); `git diff --check` PASS; GBARecomp `mzm/mzm-integration` untouched at `2c40fe8`.
+
+## M4-RESUME-1 VBlank interior resume after the NES quit (2026-09-30): PASS, new frontier captured
+
+Status: **PASS** for the stated goal: `0x080006CA` Thumb is resolved as a static resume of the function that contains it, without interpreter, self-heal, disabling the VBlank yield, per-halfword entries or a duplicated function. The chain then runs through more of MZM's boot and stops at the next miss of the **same class** in a different function (`InitializeAudio` `0x0800271C`); the choice of how to cover the rest of the ROM is left open (below). GBARecomp is unchanged (`2c40fe8539c566ce2aee7dce8a722917a6cf475c`); nothing pushed or merged.
+
+### The old frontier, exactly
+
+`mzm_ram_dispatch`/generated code check `runtime_should_yield()` at every instruction prologue. It yields (unwinds to the outer loop) at the first prologue after a VBlank start when the CPU is in User/System mode and IRQ depth is 0. Before the miss (gdb on `runtime_dispatch_miss`): frame 3245, `r0 = 0x040000D4` (DMA3), `r1 = 0x85010000`, `r15 = 0x080006CA`, `lr = 0x08000243`, `cpsr = 0x3F`, `g_runtime_vblank_starts = 3245`, call-return depth 0, IRQ depth 0. `InitializeGame` is Thumb `[0x080006A0, 0x080007C4)`; `0x080006C8` is `str r1,[r0,#8]`, the DMA3 start that clears EWRAM (`0x10000` words, more than one frame of cycles), so the VBlank starts inside it and the next prologue (`0x080006CA`, `ldr r1,[r0,#8]`) yields. The instruction after the IWRAM clear (`0x080006DC`) is the same case. It is not an arbitrary PC: any instruction that follows a VBlank-crossing one can be the resume PC.
+
+### Why a resume alias is valid here
+
+Every generated instruction block starts with `R15 = pc; if (runtime_should_yield()) return;` and only uses locals inside its own block; the Thumb `bl` pair passes its state through `R14` (`bl.hi` sets it, `bl.lo` reads it). Resuming at any instruction boundary therefore reconstructs its state only from `g_cpu`. The generator turns `bl` into a call whose continuation is a separate generated function (`gf_tfunc_080006E2`, `...6E6`, ...), so the region is nine generated functions (98 instruction PCs, 89 interior).
+
+### Mechanism used (config only)
+
+`[[extra_func]] addr = <pc> mode = "thumb" resume = true` per interior instruction: a thin alias that enters the containing generated function, whose resume prologue jumps to that instruction (`docs/TOML_SCHEMA.md`). `[[resume_range]]` was tried and rejected: it re-roots the range start without its symbol name (`gf_InitializeGame` became `gf_tfunc_080006A0`), folds the continuations into one host and seeds the literal-pool words as standalone functions. `static_resume_all` (whole program) was not adopted (measured below). The generator output diff against the previous corpus is purely additive (0 removed lines: resume prologues in 9+ functions and new table rows); `recompiled.h` and the data symbol map are identical; regeneration is byte-reproducible.
+
+### Coverage
+
+241 entries in `configs/mzm-us.toml` in two reviewed units: `InitializeGame` and its continuations (89) and MZM's `sram.c` `[0x080051D4, 0x08005368)` (152). The second was not a guess: after `0x080006CA` the next misses were `0x080051EE` (inside `SramWriteUncheckedInternal`) and `0x08005280` (`SramWrite`): MZM's save initialisation reads/writes/verifies the whole 32 KiB SRAM byte by byte with wait states, which takes several frames, so the yield always lands in these loops. `SramWriteUncheckedInternal` and `SramCheckInternal` are also the two routines the game copies to the stack; the stack-helper hook runs their position-independent ROM translation, whose guest PCs are ROM addresses, so they resume at their ROM PCs (the case NES-3c described as "resumes in the ROM translation"). Only decoded instruction PCs are listed (checked against the generated bodies by `tests/m4/test_resume.py`); literal pools, other modes and neighbouring functions are not.
+
+### Tests (RED first, then GREEN)
+
+Commit `6b21cc8` adds the tests before the fix and they fail specifically for the missing aliases: `mzm-resume-entry` (`tests/m4/resume_entry_test.cpp`, real `runtime_has_static_entry`: right mode succeeds, ARM entry fails, both halves of the Thumb `bl` resume, continuation interiors resume, literal words and bytes after the last instruction are not published, the next function is unchanged) and `tests/m4/test_resume.py` (every decoded instruction of each region function is a resume alias of *that* function, roots unchanged, nothing else published, the config lists exactly those PCs). Not a unit test: the equality of state after a resume with the uninterrupted run; that is covered end to end (the chain continues from the resumed PCs through `sram.c`, `SetupSoundTransfer` and into `InitializeAudio`, and the three M4 harness cases still pass).
+
+### Integration
+
+The same chain as NES-3c (start -> gameplay -> death -> save YES -> quit -> loader reset stub -> SoftReset) now continues: `0x080006CA` no longer misses; MZM's boot runs `InitializeGame`, the SRAM initialisation (native resumes at `0x080051EE`, `0x080052AC/AE/B0`, `0x08005280`) and `SetupSoundTransfer`, with `dispatch_misses=0`, `interpreted_insns=0`, `unmapped=0`, `io_unhandled=0`, self-heal disabled, IRQ depth 0 and host return depth 0 until the next miss.
+
+### A harness defect found on the way
+
+Between the two, `SetupSoundTransfer` (`0x080028F4`) waits for `VCOUNT == 159` by reading the byte at `0x04000006`. The NES behavior harness did not call `bus.io().set_ppu(&ppu)` (the production run loop does, `runtime.cpp:1934`), so `read8(VCOUNT)` returned 0 and the game spun for 10,000 frames with a constant frame hash and no IRQ progress and **no miss** (a livelock, not a coverage gap). It never showed before because the NES emulator does not read VCOUNT. The harness now wires the PPU exactly like production; the qualified frame hashes (title `CB0431A65E6BD988`, menu `16E0720AC211F04B`, gameplay `401276D456096B86`) are unchanged. New diagnostic: `MZM_NES_DIAG_FRAMES="from,count"` prints guest state at frame boundaries.
+
+### New first frontier
+
+| field | value |
+|---|---|
+| frame | 3223 (CTest script) / 3263 (14,000-frame script) |
+| PC / mode | `0x0800271C` Thumb |
+| owner | MZM ROM `InitializeAudio` `[0x08002564, 0x080027F8)` interior |
+| caller | `lr = 0x080029AD` |
+| CPU / depths | `cpsr = 0x6000003F`, `sp = 0x03007E28`; host return depth 0, IRQ depth 0 |
+| counters | 1 miss, 6 interpreted instructions, `unmapped=0`, `io_unhandled=0` |
+
+Same mechanism (a ROM routine that outlasts a frame while the harness unwinds), different function. Three consecutive functions of MZM's boot (`InitializeGame`, `sram.c`, `InitializeAudio`) is the evidence that listing units one by one does not scale. Measured cost of the documented upstream policy `static_resume_all = true` (generation into a scratch directory, not adopted): dispatch table 28,670 -> 233,709 rows (x8.2), generated source 152 -> 179 MB (+18%), generation still ~5 s. It is a project-level trade-off (build size and corpus identity), so it needs a decision; the production runner (present-in-place) never unwinds at a VBlank and is unaffected either way.
+
+### Host stack
+
+Hook high-water 5,768,016 bytes (baseline 5,768,000; unchanged apart from a 16-byte alignment difference); passes at 8192 and 5888 KB, segfaults at 5632 KB, exactly as before. Not fixed here.
+
+### Save state
+
+Unchanged status: `SaveToSram` executed and wrote SRAM (first sampled write `0x7FD8` at frame 3120). New observation, not interpreted: after MZM's own boot writes, the final SRAM diff no longer contains `[0x7FD8, 0x8000)` (it contains only MZM's ranges `[0x0000,0x0016)`, `[0x0018,0x0030)`, `[0x6D40,0x6D56)`, `[0x6D58,0x6D70)`, `[0x6DC0,0x6E40)`, 220 bytes). Whether the NES save survives a restart (hardware-faithful vs an emulation defect) is unverified and belongs to the save round-trip milestone. No load path was exercised.
+
+### Validation
+
+CTest 65/65 (new: `mzm-resume-entry`); Python 26/26 (new: `test_resume.py`); M4 01/02/03 PASS; NES-1a/1b/2b/3b/3c PASS; soak PASS; `git diff --check` PASS; GBARecomp unchanged at `2c40fe8`.
