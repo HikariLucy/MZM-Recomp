@@ -22,6 +22,7 @@ struct RamTemplate {
     std::uint32_t source_start;
     std::uint32_t size;
     void (*native_fn)();
+    const char* name;
 };
 
 // MZM USA (BMXE rev 0), byte-perfect decomp anchors.
@@ -30,9 +31,10 @@ struct RamTemplate {
 // [SramWriteUncheckedInternal, SramWriteUnchecked) into a local stack buffer.
 // SramCheck() does the same for [SramCheckInternal, SramCheck).
 constexpr RamTemplate kStackHelpers[] = {
-    {0x080051D4u, 0x24u, &gf_SramWriteUncheckedInternal},
-    {0x0800529Cu, 0x30u, &gf_SramCheckInternal},
+    {0x080051D4u, 0x24u, &gf_SramWriteUncheckedInternal, "SramWriteUncheckedInternal"},
+    {0x0800529Cu, 0x30u, &gf_SramCheckInternal, "SramCheckInternal"},
 };
+constexpr std::size_t kNumStackHelpers = std::size(kStackHelpers);
 
 // Index order matches mzm_haze::kTemplates. BG3/BG2/BG1 is copied but
 // HazeProcess calls its ROM entry directly; retaining it here makes the
@@ -60,6 +62,9 @@ struct DispatchStats {
     mzm_nes_emulator_part_stats_t nes_part[mzm_nes_emulator::kNumParts] = {};
     mzm_nes_emulator_scope_stats_t nes_scope[mzm_nes_emulator::kNumParts]
                                             [mzm_nes_emulator::kMaxScopes] = {};
+    mzm_stack_helper_stats_t stack_helper[kNumStackHelpers] = {};
+    std::uintptr_t stack_low = ~static_cast<std::uintptr_t>(0);   // lowest hook frame seen
+    std::uint64_t stack_helper_rejects = 0;   // in-window Thumb entry matching no helper
     std::uint64_t variant_hits[mzm_haze::kTemplates.size()] = {};
     bool trace = false;
     bool capture_requested = false;
@@ -90,6 +95,7 @@ static mzm_nes_emulator_transition_t s_nes_transitions[kMaxNesTransitions];
 static std::size_t s_nes_transition_count = 0;
 static int s_nes_last_part = -1;
 static void (*s_nes_frontier_hook)(const mzm_nes_emulator_event_t&) = nullptr;
+static void (*s_stack_helper_observer)(const mzm_stack_helper_event_t&) = nullptr;
 static bool s_nes_payload_frontier_stop = false;
 
 // Entry gate for one NES emulator PC: the owning scope and its requires
@@ -138,8 +144,67 @@ __attribute__((noinline)) static int nes_verify_entry(
     return -1;
 }
 
+// The copied helpers live in the high-IWRAM stack/scratch window. MZM's normal
+// System-mode stack begins at physical IWRAM offset 0x7E60; the NES emulator
+// switches its stack to the alias 0x03827200 (same physical 0x7200), so the
+// window is defined on the PHYSICAL offset (IWRAM mirrors every 0x8000 bytes,
+// which the bus implements) while the guest PC stays the logical alias. Fixed
+// IWRAM code copies below 0x7000 keep going through the generated dispatch table.
+constexpr std::uint32_t kStackWindowLo = 0x7000u;
+constexpr std::uint32_t kStackWindowHi = 0x7E60u;
+
+// Which helper (if any) sits at guest `pc`. The helper bodies are
+// position-independent Thumb code (no pc-relative load/ADR/BL; internal
+// branches only, proven by tests/m4/test_nes_map.py), so once the live bytes
+// equal the exact ROM source the already generated translation of the ROM copy
+// is equivalent at any destination. No latch: every entry re-reads the bytes.
+// Out of line so its locals never stay live across the native call (the NES
+// emulator recurses natively through this hook thousands of frames deep).
+__attribute__((noinline)) static int match_stack_helper(std::uint32_t pc, int thumb) {
+    if (!thumb || (pc >> 24) != 0x03u) return -1;
+    const std::uint32_t phys = pc & 0x7FFFu;
+    if (phys < kStackWindowLo || phys >= kStackWindowHi) return -1;
+    for (std::size_t i = 0; i < kNumStackHelpers; ++i) {
+        auto& st = g_stats.stack_helper[i];
+        ++st.attempts;
+        // A copy must not run off the end of the IWRAM page it started in.
+        if (phys + kStackHelpers[i].size > 0x8000u) continue;
+        if (!guest_bytes_match(pc, kStackHelpers[i].source_start, kStackHelpers[i].size)) continue;
+        ++st.matches;
+        if ((pc & 0x00FFFFFFu) >= 0x8000u) ++st.mirror_matches;
+        return static_cast<int>(i);
+    }
+    ++g_stats.stack_helper_rejects;
+    return -1;
+}
+
+__attribute__((noinline)) static void run_stack_helper(std::size_t i, std::uint32_t pc) {
+    // SRAM initialization occurs before the normal Intro/Title loop. If
+    // milestone tracing is enabled, this is an early post-run_game-reset
+    // point where the generic function-entry hook can be armed reliably.
+    mzm_arm_milestone_entry_hook();
+    if (s_stack_helper_observer) {
+        mzm_stack_helper_event_t e{kStackHelpers[i].name, pc, false, g_cpu.R[0], g_cpu.R[1],
+                                   g_cpu.R[2], g_cpu.R[3], g_cpu.R[13], g_cpu.R[14]};
+        s_stack_helper_observer(e);
+        kStackHelpers[i].native_fn();
+        e.exit = true;
+        e.r0 = g_cpu.R[0]; e.r1 = g_cpu.R[1]; e.r2 = g_cpu.R[2]; e.r3 = g_cpu.R[3];
+        e.sp = g_cpu.R[13]; e.lr = g_cpu.R[14];
+        s_stack_helper_observer(e);
+        return;
+    }
+    kStackHelpers[i].native_fn();
+}
+
 int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
     ++g_stats.hook_calls;
+    {
+        // Host-stack audit: the generated code recurses natively through this
+        // hook; the lowest frame address seen approximates the deepest point.
+        const auto here = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
+        if (here < g_stats.stack_low) g_stats.stack_low = here;
+    }
 
     if (!thumb && s_nes_payload_frontier_stop && pc == 0x06006558u) {
         ++g_stats.nes_frontier_hits;
@@ -334,30 +399,14 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
         return 0;
     }
 
-    // MZM's normal System-mode stack begins at 0x03007E60. Restrict this
-    // canonicalizer to the high-IWRAM stack/scratch window so fixed IWRAM code
-    // copies continue through the normal generated dispatch table.
-    if (pc < 0x03007000u || pc >= 0x03007E60u) {
-        return 0;
-    }
-
-    for (const RamTemplate& helper : kStackHelpers) {
-        if (!guest_bytes_match(pc, helper.source_start, helper.size)) {
-            continue;
-        }
-
-        // SRAM initialization occurs before the normal Intro/Title loop. If
-        // milestone tracing is enabled, this is an early post-run_game-reset
-        // point where the generic function-entry hook can be armed reliably.
-        mzm_arm_milestone_entry_hook();
-
-        // The helper bodies are position-independent Thumb code. The runtime
-        // bytes have been verified against the exact ROM source before we
-        // canonicalize execution to the already generated native translation.
-        helper.native_fn();
+    // Code copied to the stack (SramWriteUnchecked / SramCheck), by MZM itself
+    // and by the NES emulator's identical copy of sram.c. Only a Thumb entry
+    // whose live bytes equal the ROM source runs; see match_stack_helper().
+    const int helper = match_stack_helper(pc, thumb);
+    if (helper >= 0) {
+        run_stack_helper(static_cast<std::size_t>(helper), pc);
         return 1;
     }
-
     return 0;
 }
 
@@ -365,6 +414,7 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
 
 void mzm_install_ram_dispatch_hook() {
     g_stats = {};
+    s_stack_helper_observer = nullptr;
     s_nes_payload_verified = false;
     s_nes_frontier_hook = nullptr;
     s_nes_transition_count = 0;
@@ -417,6 +467,23 @@ std::size_t mzm_nes_emulator_part_stats(mzm_nes_emulator_part_stats_t* out,
         out[i].name = mzm_nes_emulator::kParts[i].name;
     }
     return n;
+}
+
+std::size_t mzm_stack_helper_stats(mzm_stack_helper_stats_t* out, std::size_t capacity,
+                                   std::uint64_t* rejects) {
+    std::size_t n = 0;
+    for (; n < kNumStackHelpers && n < capacity; ++n) {
+        out[n] = g_stats.stack_helper[n];
+        out[n].name = kStackHelpers[n].name;
+    }
+    if (rejects) *rejects = g_stats.stack_helper_rejects;
+    return n;
+}
+
+std::uintptr_t mzm_ram_dispatch_stack_low() { return g_stats.stack_low; }
+
+void mzm_set_stack_helper_observer(void (*observer)(const mzm_stack_helper_event_t&)) {
+    s_stack_helper_observer = observer;
 }
 
 std::size_t mzm_nes_emulator_scope_stats(mzm_nes_emulator_scope_stats_t* out,

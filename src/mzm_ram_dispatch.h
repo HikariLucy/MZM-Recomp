@@ -54,6 +54,33 @@ struct mzm_nes_emulator_scope_stats_t {
 size_t mzm_nes_emulator_scope_stats(mzm_nes_emulator_scope_stats_t* out,
                                     size_t capacity);
 
+// Code copied to the stack (SramWriteUnchecked/SramCheck helpers), NES-3c.
+// attempts: Thumb entries in the stack window tried against this helper;
+// matches: live bytes equal the ROM source (native run); mirror_matches: the
+// subset entered through an IWRAM alias above 0x0300FFFF (e.g. 0x03827110).
+struct mzm_stack_helper_stats_t {
+    const char* name = nullptr;
+    std::uint64_t attempts = 0;
+    std::uint64_t matches = 0;
+    std::uint64_t mirror_matches = 0;
+};
+size_t mzm_stack_helper_stats(mzm_stack_helper_stats_t* out, size_t capacity,
+                              std::uint64_t* rejects);
+
+// Optional read-only observer around each helper run: called once at entry
+// (exit=false, the argument registers) and once after the native body returns
+// (exit=true, r0 = return value).
+struct mzm_stack_helper_event_t {
+    const char* name;
+    std::uint32_t pc;
+    bool exit;
+    std::uint32_t r0, r1, r2, r3, sp, lr;
+};
+// Lowest host stack address (frame of this hook) seen since install; ~0 if none.
+std::uintptr_t mzm_ram_dispatch_stack_low();
+
+void mzm_set_stack_helper_observer(void (*observer)(const mzm_stack_helper_event_t&));
+
 // Opt-in observer for a verified emulator PC that has no native entry. Used by
 // tests to stop at the first real unsupported frontier; it may throw to unwind
 // the native call chain. With no observer installed the transfer is a normal
