@@ -6,8 +6,10 @@ Drives tests/m4/nes_behavior_test.cpp (NES-3 behavioural qualification).
     ctl      START (title -> menu), START (menu -> game); no other input
     flow     same + SELECT round trip in the menu, RIGHT held and A in the game
     frontier a longer scripted play session; PINS the current first frontier
-             (see docs/M4-NES-METROID.md, NES-3): Part 1 resident handler entry
-             0x06006E08 after the init half of Part 1 was overwritten by graphics
+             (see docs/M4-NES-METROID.md, NES-3b): the Game Over / password / SRAM
+             save path copies Part 6 SramCheckInternal to the stack and calls it
+             at 0x03827110 (Thumb). Before it, Part 1 resident handlers are
+             re-entered natively after the init half was overwritten by graphics.
   soak: two runs of N (default 10000) no-input frames; compares every "NES3 " line
 
 Input is injected by the test through bus.io().set_keyinput() (the production
@@ -76,7 +78,7 @@ def qualify(binary, rom, bios):
         "ctl": dict(common, MZM_NES_INPUT="700:START:8,1000:START:8"),
         "flow": dict(common, MZM_NES_INPUT="700:START:8,800:SELECT:8,900:SELECT:8,1000:START:8,"
                                             "1650:RIGHT:100,1800:A:25"),
-        "frontier": {"MZM_NES_FRAMES": 3100, "MZM_NES_CHECKPOINT": 1000, "MZM_NES_HASH_FRAMES": "1300",
+        "frontier": {"MZM_NES_FRAMES": 3400, "MZM_NES_CHECKPOINT": 1000, "MZM_NES_HASH_FRAMES": "1300",
                      "MZM_NES_INPUT": "700:START:8,1000:START:8," + ",".join(play)},
     }
     with ThreadPoolExecutor(max_workers=3) as ex:
@@ -98,11 +100,19 @@ def qualify(binary, rom, bios):
     print("== frontier pin (scripted play session)")
     check(fr[0] == 3, "frontier run exits 3 (stall/miss)", failures)
     stall = next((l for l in fr[1] if l.startswith("NES3 STALL")), "")
-    check("frame=3068" in stall and "misses=1" in stall, "first frontier at frame 3068 (" + stall[:70] + ")", failures)
+    check("frame=3111" in stall and "misses=1" in stall, "first frontier at frame 3111 (" + stall[:70] + ")", failures)
     misses = next((l for l in fr[1] if l.startswith("NES3 stop_misses")), "")
-    check('"pc":"0x06006E08"' in misses and '"mode":"arm"' in misses, "first miss is Part 1 0x06006E08 ARM", failures)
-    check(any(l.startswith("NES3 part part1") and "verify_fail=1" in l for l in fr[1]),
-          "Part 1 whole-image byte gate failed closed once", failures)
+    check('"pc":"0x03827110"' in misses and '"mode":"thumb"' in misses and '"distinct_misses":1' in misses,
+          "first (only) miss is the stack-resident Thumb routine 0x03827110", failures)
+    check(any(l.startswith("NES3 stop_miss_source") and "part6 image offset 0x7BC" in l for l in fr[1]),
+          "its bytes are a run-time copy of Part 6 0x0203E7BC (SramCheckInternal)", failures)
+    print("== Part 1 resident re-entry (NES-3b)")
+    p1 = next((l for l in fr[1] if l.startswith("NES3 part part1")), "")
+    m1 = re.search(r"verified=(\d+) matches=(\d+) verify_fail=(\d+)", p1)
+    check(m1 and int(m1.group(2)) >= 1 and m1.group(3) == "0",
+          "Part 1 entered natively after init was overwritten, no gate failure (" + p1[15:] + ")", failures)
+    p6 = next((l for l in fr[1] if l.startswith("NES3 part part6")), "")
+    check("verify_fail=0" in p6, "Part 6 gate never failed (sPasswordBytes is excluded, the rest still gated)", failures)
     bk = next((l for l in fr[1] if l.startswith("NES3 stop_buckets part1")), "")
     resident = [int(x.split(":")[1]) for x in bk.split()[-5:]]
     check(resident == [0, 0, 0, 0, 0],

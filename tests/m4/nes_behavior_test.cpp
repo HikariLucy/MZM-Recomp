@@ -72,6 +72,51 @@ const std::map<std::uint32_t, const char*> kWatched = {
     {0x0203E414u, "sram_LoadFromSram"},
 };
 
+// Diagnostic (MZM_NES_WATCH_IMAGE_WRITES=1): records CPU stores that change bytes
+// of the Part 1 image (VRAM) and of the Part 6 image (EWRAM). Part 1 is reported
+// per 0x40-byte chunk: first frame, writing PC, widths, count. Part 6 is reported
+// per store address (few distinct ones): first/last frame, writing PC, old/new.
+// Read-only observer; never suppresses a store. Evidence for the Part 1
+// init/resident lifecycle and the Part 6 mutable words (docs/M4-NES-METROID.md).
+struct Part1WriteWatch final : gba::BusWriteObserver {
+    struct Chunk { std::uint64_t first_frame = 0, count = 0; std::uint32_t first_pc = 0, widths = 0; };
+    std::map<std::uint32_t, Chunk> chunks;   // keyed by chunk base address
+    std::map<std::uint32_t, std::uint64_t> writer_pcs;
+    std::uint32_t min_addr = ~0u, max_addr = 0;   // inclusive byte range of changed stores
+    struct Word { std::uint64_t first_frame = 0, last_frame = 0, count = 0;
+                  std::uint32_t first_pc = 0, first_old = 0, first_new = 0, last_new = 0, width = 0; };
+    std::map<std::uint32_t, Word> p6_words;       // keyed by store address
+    std::map<std::uint32_t, std::uint64_t> p6_writer_pcs;
+    std::uint64_t (*frame)() = nullptr;
+    bool on_bus_write(gba::BusWriteRegion region, std::uint32_t, std::uint32_t addr,
+                      std::uint8_t width, std::uint32_t old_value, std::uint32_t new_value) override {
+        if (old_value == new_value) return false;
+        if (region == gba::BusWriteRegion::Ewram) {
+            if (addr < 0x0203E000u || addr >= 0x0203E8E0u) return false;
+            auto& w = p6_words[addr];
+            if (!w.count) { w.first_frame = frame(); w.first_pc = g_cpu.R[15]; w.first_old = old_value;
+                            w.first_new = new_value; w.width = width;
+                            std::fprintf(stderr, "NES3 p6_first_write addr=0x%08X width=%u frame=%llu pc=0x%08X lr=0x%08X old=0x%X new=0x%X\n",
+                                         addr, width, (unsigned long long)frame(), g_cpu.R[15], g_cpu.R[14], old_value, new_value); }
+            w.last_frame = frame(); w.last_new = new_value; ++w.count;
+            ++p6_writer_pcs[g_cpu.R[15]];
+            return false;
+        }
+        if (region != gba::BusWriteRegion::Vram) return false;
+        if (addr < 0x06006000u || addr >= 0x06007240u) return false;
+        min_addr = std::min(min_addr, addr);
+        max_addr = std::max(max_addr, addr + width - 1u);
+        auto& c = chunks[addr & ~0x3Fu];
+        if (!c.count) { c.first_frame = frame(); c.first_pc = g_cpu.R[15]; }
+        ++c.count;
+        c.widths |= width;
+        ++writer_pcs[g_cpu.R[15]];
+        return false;
+    }
+};
+Part1WriteWatch g_p1_watch;
+gba::GbaPpu* g_watch_ppu = nullptr;
+
 void fail(const char* message) {
     std::fprintf(stderr, "NES-3 FAIL: %s\n", message);
     std::exit(1);
@@ -227,6 +272,14 @@ int main(int argc, char** argv) {
     }
     mzm_set_nes_payload_frontier_stop(false);
     mzm_set_nes_emulator_frontier_hook(on_frontier);
+    // Installed only after the payload loaded the images (Phase A), so the
+    // recorded stores are the emulator's own, not the load.
+    const bool watch_p1_writes = env_or("MZM_NES_WATCH_IMAGE_WRITES", "0") == "1";
+    if (watch_p1_writes) {
+        g_watch_ppu = &ppu;
+        g_p1_watch.frame = [] { return g_watch_ppu->frame_count(); };
+        bus.set_write_observer(&g_p1_watch);
+    }
 
     // The SRAM starts erased (0xFF); snapshot to audit guest writes.
     const std::vector<std::uint8_t> sram0 = bus.save().sram_bytes();
@@ -506,6 +559,23 @@ int main(int argc, char** argv) {
         for (int k = 0; k < 0x100; ++k) nz += c[k] != 0;
         std::printf("NES3 audio_buf2 nonzero_bytes=%zu/256 (IWRAM 0x03005F10..)\n", nz);
     }
+    if (watch_p1_writes) {
+        for (const auto& kv : g_p1_watch.chunks)
+            std::printf("NES3 p1_write chunk=0x%08X first_frame=%llu first_pc=0x%08X widths=0x%X changes=%llu\n",
+                        kv.first, (unsigned long long)kv.second.first_frame, kv.second.first_pc,
+                        kv.second.widths, (unsigned long long)kv.second.count);
+        std::printf("NES3 p1_write_range min=0x%08X max=0x%08X\n", g_p1_watch.min_addr, g_p1_watch.max_addr);
+        for (const auto& kv : g_p1_watch.writer_pcs)
+            std::printf("NES3 p1_writer pc=0x%08X changes=%llu\n", kv.first, (unsigned long long)kv.second);
+        for (const auto& kv : g_p1_watch.p6_words)
+            std::printf("NES3 p6_write addr=0x%08X width=%u first_frame=%llu last_frame=%llu first_pc=0x%08X "
+                        "first_old=0x%X first_new=0x%X last_new=0x%X changes=%llu\n",
+                        kv.first, kv.second.width, (unsigned long long)kv.second.first_frame,
+                        (unsigned long long)kv.second.last_frame, kv.second.first_pc, kv.second.first_old,
+                        kv.second.first_new, kv.second.last_new, (unsigned long long)kv.second.count);
+        for (const auto& kv : g_p1_watch.p6_writer_pcs)
+            std::printf("NES3 p6_writer pc=0x%08X changes=%llu\n", kv.first, (unsigned long long)kv.second);
+    }
     std::printf("NES3 sram write_frames=%llu dirty=%d\n", (unsigned long long)sram_write_frames,
                 bus.save().dirty() ? 1 : 0);
     std::printf("NES3 depth max_host=%llu max_irq=%llu final_host=%u final_irq=%u\n",
@@ -549,6 +619,32 @@ int main(int argc, char** argv) {
                         (unsigned long long)t.frame, t.pc, t.lr, t.sp, t.cpsr);
         }
         std::printf("NES3 stop_misses %s\n", gbarecomp::self_heal_misses_json().c_str());
+        // First miss: guest CPU state and the bytes at its PC. If the bytes are a
+        // copy of a Part image window (code copied to RAM at run time, e.g. the
+        // SRAM routines copied to the stack), name the source.
+        std::printf("NES3 stop_cpu");
+        for (int r = 0; r < 16; ++r) std::printf(" r%d=0x%08X", r, g_cpu.R[r]);
+        std::printf(" cpsr=0x%08X\n", g_cpu.cpsr);
+        {
+            const std::string js = gbarecomp::self_heal_misses_json();
+            const auto at = js.find("\"pc\":\"0x");
+            if (at != std::string::npos) {
+                const std::uint32_t mpc = static_cast<std::uint32_t>(std::strtoul(js.c_str() + at + 8, nullptr, 16));
+                std::vector<std::uint8_t> win(0x40);
+                for (std::size_t k = 0; k < win.size(); ++k) win[k] = bus_read_u8(mpc + static_cast<std::uint32_t>(k));
+                std::printf("NES3 stop_miss_bytes pc=0x%08X:", mpc);
+                for (auto b : win) std::printf(" %02X", b);
+                std::printf("\n");
+                for (std::size_t i = 0; i < mzm_nes_emulator::kNumParts; ++i) {
+                    const auto& img = pristine[i];
+                    const auto it = std::search(img.begin(), img.end(), win.begin(), win.begin() + 0x20);
+                    if (it != img.end())
+                        std::printf("NES3 stop_miss_source first 0x20 bytes equal %s image offset 0x%zX (guest 0x%08X)\n",
+                                    mzm_nes_emulator::kParts[i].name, static_cast<std::size_t>(it - img.begin()),
+                                    mzm_nes_emulator::kParts[i].start + static_cast<std::uint32_t>(it - img.begin()));
+                }
+            }
+        }
         if (!dump_dir.empty() && ppu.has_latched_framebuffer()) {
             std::ofstream out(dump_dir + "/nes3_stop.ppm", std::ios::binary);
             out << "P6\n240 160\n255\n";
