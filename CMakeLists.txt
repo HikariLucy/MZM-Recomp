@@ -204,6 +204,19 @@ if(BUILD_TESTING)
             add_test(NAME mzm-nes-stack-helper
                 COMMAND mzm_nes_stack_helper_test "${MZM_TEST_ROM}")
 
+            add_executable(mzm_resume_entry_test
+                tests/m4/resume_entry_test.cpp
+                $<TARGET_OBJECTS:mzm_generated_objects>)
+            target_include_directories(mzm_resume_entry_test PRIVATE
+                src generated
+                "${GBARECOMP_ROOT}/src/armv4t"
+                "${GBARECOMP_ROOT}/src/gba"
+                "${GBARECOMP_ROOT}/src/runtime")
+            target_link_libraries(mzm_resume_entry_test PRIVATE
+                "-Wl,--start-group" gbarecomp_runtime gbarecomp_debug
+                gbarecomp_gba gbarecomp_armv4t "-Wl,--end-group")
+            add_test(NAME mzm-resume-entry COMMAND mzm_resume_entry_test)
+
             add_executable(mzm_nes_behavior_test
                 tests/m4/nes_behavior_test.cpp
                 src/mzm_ram_dispatch.cpp
