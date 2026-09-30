@@ -67,3 +67,10 @@ start = 0x080032B4
 end = 0x08003380
 mode = "thumb"
 reason = "DMA-based fill/clear utility used across the game; each DMA3 chunk outlasts a frame (first miss 0x0800331A, the read-back after the DMA start; ablation: without the unit the NES-3 post-reset run stops at frame 4390 at this PC, caller 0x08056D57). Audited: 9 generated functions, 95 instructions, three literal pools inside the range (not published), ldm/stm on r13 and one bx r0 return only; registers r8-r12 live in g_cpu"
+
+[[resume_unit]]
+name = "SaveFileScan"
+start = 0x080743A4
+end = 0x0807478C
+mode = "thumb"
+reason = "boot SRAM validation (SramRead_All -> unk_743a4 -> unk_74574 -> unk_74624): per save slot two 32-bit checksum passes over an EWRAM SaveFile, three text compares and BitFill/DMA repairs outlast a frame only when the SRAM already holds MZM data, i.e. every boot after the first (first miss 0x08074698 inside unk_74624, caller 0x0807457D, frame 9 of a cold boot that loads a persisted cartridge image; ablation: without the unit that boot stops there). Fresh-SRAM boots never hit it. Audited: 3 functions unk_743a4/unk_74574/unk_74624, pure EWRAM arithmetic, BL pairs, ldm/stm on r13, no SWI/MSR/MRS"
