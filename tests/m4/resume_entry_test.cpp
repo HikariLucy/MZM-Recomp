@@ -33,6 +33,17 @@ int main() {
           "literal pool words are not published");
     check(runtime_has_static_entry(0x080007A4u, 1) == 0, "bytes after the last instruction are not published");
     check(runtime_has_static_entry(0x080007C4u, 1) == 1, "the next function (SoftResetVBlankCallback) is unchanged");
+    std::printf("== InitializeAudio [0x08002564,0x080027F8) static entries (M4-RESUME-2)\n");
+    check(runtime_has_static_entry(0x08002564u, 1) == 1, "root 0x08002564 Thumb is an entry");
+    check(runtime_has_static_entry(0x0800271Cu, 1) == 1, "0x0800271C (post-NES boot frontier) resumes");
+    check(runtime_has_static_entry(0x0800271Cu, 0) == 0, "wrong mode: 0x0800271C is not an ARM entry");
+    check(runtime_has_static_entry(0x080026B8u, 1) == 1 && runtime_has_static_entry(0x080026BAu, 1) == 1,
+          "both halves of its Thumb BL resume");
+    check(runtime_has_static_entry(0x0800276Au, 1) == 1, "last instruction (bx r0) resumes");
+    check(runtime_has_static_entry(0x0800276Cu, 1) == 0 && runtime_has_static_entry(0x08002770u, 1) == 0 &&
+              runtime_has_static_entry(0x080027F4u, 1) == 0,
+          "literal pool words are not published");
+    check(runtime_has_static_entry(0x080027F8u, 1) == 1, "the next function (DoSoundAction) is unchanged");
     std::printf("M4-RESUME-1 entries %s (%d failures)\n", g_failures ? "FAIL" : "PASS", g_failures);
     return g_failures ? 1 : 0;
 }

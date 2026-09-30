@@ -27,7 +27,7 @@ UNITS = ROOT / "configs" / "mzm-resume-units.toml"
 CONFIG = ROOT / "configs" / "mzm-us.toml"
 TOOL = ROOT / "scripts" / "expand-resume-units.py"
 # Units the boot after the NES quit needs (each audited individually, see docs).
-REQUIRED_UNITS = ["InitializeGame", "sram"]
+REQUIRED_UNITS = ["InitializeGame", "sram", "InitializeAudio"]
 
 _spec = importlib.util.spec_from_file_location("expand_resume_units", TOOL)
 tool = importlib.util.module_from_spec(_spec)
