@@ -54,10 +54,18 @@ e7728148c6829ba526f682876430a0c9022dc6c0
 M4 integration revision used by the current MZM build:
 
 ```text
-6198f771f35cf7cbbbb6a80f013c9363fd343866
+2acbc2b99fcf7e925a1584fbd39faeb4b5567be4
 ```
 
-(NES-PERF-1: `0b9d0326d53a28516d06f2eab43b2bc72c6fef43` plus one commit, local branch
+**RC-INTEGRATION-PRECHECK-1 (this branch only):** the single framework *and* generator pin is
+`2acbc2b`, GBARecomp local branch `mzm/rc-integration-precheck` = `0b9d032` + NES-PERF-1's
+`binary-search private entry lookup` (codegen) + the four ENHANCEMENTS-1 commits (runtime/host
+UI) + a test commit covering the lookup index's first-match semantics. Because NES-PERF-1
+changes codegen, the generator can no longer stay at `0b9d032`: it must be this revision or
+the O(log n) index is not emitted (`tests/m4/test_perf_index.py` guards this). Local only.
+See `docs/RC-INTEGRATION-PRECHECK.md`.
+
+(NES-PERF-1 original pin was `6198f77`: `0b9d0326d53a28516d06f2eab43b2bc72c6fef43` plus one commit, local branch
 `mzm/private-lookup-index`: the generated `runtime_invoke_private_entry_in_image` binary-searches
 a sorted (image, mode, pc) index instead of scanning the private table linearly; same semantics.
 Not pushed. The MZM corpus must be regenerated with this revision's `gba_recompile`.)
@@ -71,8 +79,9 @@ transfers that never return (bounded native stack) and sound-FIFO DMA semantics
 **ENHANCEMENTS-1 build pin:** the MZM *build* now pins `bc65c55880cb8b1d2e5f53dda513ab8f1ce60b9e`
 (branch `feat/host-display-enhancements`, four commits on top of `0b9d032`: display
 settings model, presentation renderer, opt-in enhancements menu, audio-probe `net_underrun` field). It changes only the
-runtime/renderer; the recompiler and generated code are untouched, so the *generator*
-pin (`scripts/generate-m1.sh`) stays at `0b9d032`. All new `RunOptions` fields default off,
+runtime/renderer; the recompiler and generated code are untouched, so on the standalone
+ENHANCEMENTS-1 branch the *generator* pin stayed at `0b9d032` (**superseded** in the
+integration branch: generator = build pin = `2acbc2b`, see above). All new `RunOptions` fields default off,
 so other consumers of the framework are unaffected. Local only: not pushed or merged.
 See `docs/ENHANCEMENTS.md`.
 
