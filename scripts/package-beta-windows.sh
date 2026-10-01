@@ -53,6 +53,7 @@ cp "$REPO/assets/icons/mzm-brand-helm-core.png" "$STAGE/assets/icons/"
 cp "$REPO/configs/mzm-us.toml" "$STAGE/configs/"
 cp "$REPO/docs/BETA-2-WINDOWS-README.txt" "$STAGE/README.txt"
 cp "$REPO/docs/BETA-2-TESTER-CHECKLIST.txt" "$STAGE/TESTER-CHECKLIST.txt"
+cp "$REPO/docs/BETA-2-SMOKE-TEST.txt" "$STAGE/SMOKE-TEST.txt"
 GBARECOMP_ROOT="${MZM_GBARECOMP_ROOT:-}"
 [[ -n "$GBARECOMP_ROOT" && -f "$GBARECOMP_ROOT/LICENSE" ]] \
     || fail 'set MZM_GBARECOMP_ROOT to the exact linked GBARecomp checkout (LICENSE required)'
