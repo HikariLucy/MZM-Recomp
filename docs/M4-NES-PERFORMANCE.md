@@ -1,5 +1,8 @@
 # M4 NES performance investigation (NES-PERF-1)
 
+> **Integration note:** `6198f77` below is the standalone NES-PERF-1 pin; the integration branch pins
+> `2acbc2b`, which contains it (`docs/RC-INTEGRATION-PRECHECK.md`).
+
 Date: 2026-10-01. Base `a223020` (`feat/m4-compat-harness`), work branch `feat/nes-performance`.
 GBARecomp: pinned `0b9d0326d53a28516d06f2eab43b2bc72c6fef43` before, `6198f771f35cf7cbbbb6a80f013c9363fd343866`
 after (one generic commit on local branch `mzm/private-lookup-index`; nothing pushed).

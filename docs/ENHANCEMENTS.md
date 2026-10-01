@@ -1,5 +1,9 @@
 # MZM Recompiled — Enhancements (ENHANCEMENTS-1)
 
+> **Integration note (RC-INTEGRATION-PRECHECK-1):** on branch `feat/rc-integration-precheck` the framework and
+> generator pin is `2acbc2b` (this document's `bc65c55` / `0b9d032` figures are the standalone
+> ENHANCEMENTS-1 evidence). See `docs/RC-INTEGRATION-PRECHECK.md`.
+
 ESC during play opens **MZM Recompiled / Enhancements**, a host-side menu with
 Display, Graphics and Performance pages. ESC again closes it; ESC never quits the
 application. The first release is **presentation only**.
