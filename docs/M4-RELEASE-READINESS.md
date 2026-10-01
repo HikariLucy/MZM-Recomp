@@ -93,6 +93,9 @@ Chozodia scene/callback rows, bosses, endings, Zero Suit, Fusion Link, Europe. R
   (8,303,618 `verify_fail` by frame 9,000, `invoke_fail=0`, `no_corpus=0`); MZM frames then
   cost about 5.3 ms in the harness against about 3.3 ms without the NES, so the rejection
   path costs about 2 ms/frame and is not worth optimising.
+* **Superseded by NES-PERF-1 (`docs/M4-NES-PERFORMANCE.md`):** the NES slowness was a linear
+  private-table scan in the generated lookup (not the byte gate); with GBARecomp `6198f77` the
+  title loop runs at about 6.3-6.6 ms/frame (6x), output identical.
 
 ## Audio (activity PASS, accuracy PARTIAL, unchanged)
 
