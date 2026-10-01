@@ -309,9 +309,13 @@ class Menu:
         self.xs.key("Escape")
         time.sleep(0.4)
 
-    def activate(self, section, row, presses=1, key="Return"):
-        """Open the menu, enter `section`, move to `row`, press `key` `presses` times, close."""
+    def activate(self, section, row, presses=1, key="Return", around=None):
+        """Open the menu, enter `section`, move to `row`, press `key` `presses` times, close.
+
+        `around`, if given, is called once right after the menu opened and once right before it
+        closes (the guest is paused for both); the pair of results is returned."""
         self.open()
+        before = around() if around else None
         idx = SECTIONS.index(section)
         for _ in range((idx - self.section) % len(SECTIONS)):
             self.xs.key("Down")
@@ -321,7 +325,9 @@ class Menu:
             self.xs.key("Down")
         for _ in range(presses):
             self.xs.key(key)
+        after = around() if around else None
         self.close()
+        return (before, after) if around else None
 
 
 def display_ini_text():

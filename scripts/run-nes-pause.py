@@ -177,6 +177,26 @@ def main():
         time.sleep(1.5)
         check(game.frame() - q0 >= 0.7 * pre, "NES resumes after the hotkey pause")
 
+        print("== 5b: display options changed from the ESC menu inside the NES")
+        base_img = xs.grab(win)
+        for label, section, row in (("Linear filter", "Graphics", hd.GRAPHICS["Linear filter"]),
+                                    ("CRT Lite", "Graphics", hd.GRAPHICS["CRT Lite"]),
+                                    ("Integer scaling", "Graphics", hd.GRAPHICS["Integer scaling"])):
+            a, b = menu.activate(section, row, around=lambda: observe(game, "state_hash"))
+            check(a is not None and a == b, f"{label}: guest machine untouched while paused in the menu")
+            time.sleep(1.0)
+            f0 = game.frame()
+            time.sleep(1.5)
+            rate = game.frame() - f0
+            check(rate >= 0.8 * pre, f"{label}: NES resumes cleanly ({rate} vs {pre} frames/1.5 s)")
+            check(game.alive(), f"{label}: host alive")
+        styled = xs.grab(win)
+        check(hd.ImageChops.difference(base_img, styled).getbbox() is not None,
+              "filter + CRT Lite + integer scaling change the presented picture")
+        menu.activate("Display", hd.DISPLAY["Restore display defaults"])
+        time.sleep(1.0)
+        check(hd.nonblack(xs.grab(win)) > 2000, "NES picture still on screen after restoring defaults")
+
         print("== 6: audio")
         time.sleep(3.0)                      # let any refill grace (400 ms) expire
         pb1 = probe(game)
