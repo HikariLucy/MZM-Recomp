@@ -34,7 +34,7 @@ if(NOT EXISTS "${GBARECOMP_ROOT}/CMakeLists.txt")
 endif()
 
 # The source path is supplied by the builder; the revision is immutable.
-set(MZM_GBARECOMP_PIN "6198f771f35cf7cbbbb6a80f013c9363fd343866"
+set(MZM_GBARECOMP_PIN "2acbc2b99fcf7e925a1584fbd39faeb4b5567be4"
     CACHE STRING "Exact GBARecomp revision for this build")
 execute_process(COMMAND git -C "${GBARECOMP_ROOT}" rev-parse HEAD
     OUTPUT_VARIABLE MZM_GBARECOMP_HEAD OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -44,6 +44,18 @@ if(NOT MZM_GBARECOMP_GIT_RESULT EQUAL 0 OR
     message(FATAL_ERROR
         "GBARecomp must be at ${MZM_GBARECOMP_PIN}; found "
         "${MZM_GBARECOMP_HEAD} in ${GBARECOMP_ROOT}")
+endif()
+
+# The framework's in-game runtime menu (ESC) needs the recomp-ui shared model.
+# Point it at the same pinned checkout the launcher uses; without it the
+# framework falls back to its historical "ESC quits" behaviour and the host
+# display enhancements are unavailable.
+set(GBARECOMP_RUNTIME_UI_ROOT "${RECOMP_UI_ROOT}"
+    CACHE PATH "recomp-ui checkout for the framework's in-game runtime menu")
+if(MZM_RECOMP_UI AND NOT EXISTS "${GBARECOMP_RUNTIME_UI_ROOT}/src/recomp_runtime_ui.h")
+    message(WARNING
+        "recomp-ui not found at ${GBARECOMP_RUNTIME_UI_ROOT}: the in-game "
+        "Enhancements menu is disabled (ESC will quit as before).")
 endif()
 
 add_subdirectory("${GBARECOMP_ROOT}" gbarecomp_build EXCLUDE_FROM_ALL)

@@ -77,6 +77,14 @@ int main(int argc, char** argv) {
     opts.rewind_history_seconds = 15;
     opts.rewind_capture_interval_frames = 15;
 
+    // ESC opens the in-game Enhancements menu (display, graphics, performance).
+    // Presentation only: guest timing stays at the GBA's 59.7275 Hz, and the
+    // guest is held still while the menu is open.
+    opts.expose_display_enhancements = true;
+    opts.pause_when_menu_open = true;
+    opts.runtime_menu_title = "MZM Recompiled";
+    opts.runtime_menu_subtitle = "Enhancements";
+
     // Keep compatibility with GBARecomp's existing per-game host filenames.
     // The MZM launcher stores ROM/BIOS path references in the user config dir.
     opts.launcher_config_filename = "mzm-config.ini";
