@@ -54,10 +54,15 @@ e7728148c6829ba526f682876430a0c9022dc6c0
 M4 integration revision used by the current MZM build:
 
 ```text
-2c40fe8539c566ce2aee7dce8a722917a6cf475c
+0b9d0326d53a28516d06f2eab43b2bc72c6fef43
 ```
 
-(previous pin: `e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21`)
+(previous pins: `2bad2d8` tail dispatch, `2c40fe8539c566ce2aee7dce8a722917a6cf475c`
+image-scoped private CFG, `e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21`; `arm-recomp-core`
+at `efbfe13`.) The current pin adds, on top of `2c40fe8`, generated tail dispatch for guest
+transfers that never return (bounded native stack) and sound-FIFO DMA semantics
+(`CNT_H` bit 10 clear, 32-bit fixed-destination bursts routed by FIFO address); see
+`docs/M4-NES-METROID.md`.
 
 This local revision combines MOSAIC, WAITCNT, private relocated entry,
 non-returning calls (`returns = false`), terminal SoftReset control-flow,

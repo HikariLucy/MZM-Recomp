@@ -1,6 +1,7 @@
 # M4 next target
 
-The integrated GBARecomp revision `984957a4f1c70379e9ce6717c1fd080aecf7e37d`
+The integrated GBARecomp revision (current pin `0b9d0326d53a28516d06f2eab43b2bc72c6fef43`;
+the paragraph below describes its `984957a4f1c70379e9ce6717c1fd080aecf7e37d` ancestor)
 provides private relocated native entry, MOSAIC/WAITCNT, non-returning calls,
 and SoftReset control-flow termination. MZM's Chozodia hook is byte gated and
 synthetically qualified, including interior resume and WIN0H PC identity.

@@ -1,6 +1,6 @@
 # MZM-Recomp — Status
 
-**Last updated:** 2026-09-28  
+**Last updated:** 2026-09-30 (M4 row-by-row status: `docs/M4-COMPATIBILITY-MATRIX.md`)\
 **Current phase:** M4 — Compatibility  
 **M0 verdict:** **PASSED / GO**  
 **M1 verdict:** **PASSED — native hybrid execution demonstrated**  
@@ -46,7 +46,7 @@ This file is intentionally conservative. A capability is not marked complete bec
 | SRAM save round-trip | **CONFIRMED** | Strict-static relaunch recognized and loaded the M3 save back into gameplay; reload run remained zero-miss/zero-interpreter |
 | USA compatibility campaign | **EXPERIMENTAL** | M4 campaign active; early-game route and save lifecycle confirmed, broad area/boss/item/fidelity coverage remains |
 | Full-game compatibility | **PENDING** | M4 |
-| NES Metroid compatibility | **PENDING** | Dedicated M4 workstream |
+| NES Metroid compatibility | **EXPERIMENTAL** | Loader, payload, emulator Parts 1-6, input, title, gameplay, save/load round trip, quit/reset and the MZM reboot are qualified on a scripted strict-static route (`docs/M4-NES-METROID.md`); audio accuracy, pixel fidelity and long playthroughs are open |
 | Europe runtime support | **PENDING** | After USA bring-up proves architecture |
 | Product shell / launcher | **EXPERIMENTAL** | MZM-specific setup, identity, strict-static Play, user config/log paths, and Linux package script implemented; UI and gameplay beta validation remain pending |
 | Enhancements | **PENDING** | Gameplay/presentation enhancements remain M5; launcher/release shell is tracked separately |

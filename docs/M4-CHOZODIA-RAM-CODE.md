@@ -1,6 +1,6 @@
 # M4 Chozodia Escape HBlank RAM code audit (BMXE rev 0)
 
-> MZM now pins GBARecomp integration revision `984957a4f1c70379e9ce6717c1fd080aecf7e37d`.
+> This audit was written against GBARecomp integration revision `984957a4f1c70379e9ce6717c1fd080aecf7e37d`; MZM now pins `0b9d0326d53a28516d06f2eab43b2bc72c6fef43` (a descendant).
 > Private native dispatch is synthetically qualified. No real Escape scene or
 > HBlank callback has been observed.
 
