@@ -54,10 +54,14 @@ e7728148c6829ba526f682876430a0c9022dc6c0
 M4 integration revision used by the current MZM build:
 
 ```text
-0b9d0326d53a28516d06f2eab43b2bc72c6fef43
+6198f771f35cf7cbbbb6a80f013c9363fd343866
 ```
 
-(previous pins: `2bad2d8` tail dispatch, `2c40fe8539c566ce2aee7dce8a722917a6cf475c`
+(NES-PERF-1: `0b9d0326d53a28516d06f2eab43b2bc72c6fef43` plus one commit, local branch
+`mzm/private-lookup-index`: the generated `runtime_invoke_private_entry_in_image` binary-searches
+a sorted (image, mode, pc) index instead of scanning the private table linearly; same semantics.
+Not pushed. The MZM corpus must be regenerated with this revision's `gba_recompile`.)
+(previous pins: `0b9d0326d53a28516d06f2eab43b2bc72c6fef43` FIFO DMA, `2bad2d8` tail dispatch, `2c40fe8539c566ce2aee7dce8a722917a6cf475c`
 image-scoped private CFG, `e0c7cb26c1f3814327ed7872f6e1c33bc7cccb21`; `arm-recomp-core`
 at `efbfe13`.) The current pin adds, on top of `2c40fe8`, generated tail dispatch for guest
 transfers that never return (bounded native stack) and sound-FIFO DMA semantics
