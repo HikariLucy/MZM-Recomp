@@ -38,6 +38,7 @@
 #include "gba_ppu.h"
 #include "mzm_nes_emulator_resolver.h"
 #include "mzm_ram_dispatch.h"
+#include "mzm_perf_profile.h"
 #include "bios_hle.h"
 #include "runtime_arm.h"
 #include "runtime_bus_bridge.h"
@@ -208,6 +209,9 @@ void on_save_call(std::uint32_t pc) {
                     hex_bytes(read_guest(kPasswordBytes, 18).data(), 18).c_str());
 }
 void on_function_entry(std::uint32_t pc) {
+#ifdef MZM_PERF_PROFILE
+    mzm_perf::fn_entry(pc);
+#endif
     if (pc == kSaveToSram || pc == kLoadFromSram || pc == kSaveToPwBytes || pc == kLoadFromPwBytes)
         on_save_call(pc);
     if (pc == 0x00000018u) ++g_irq_vector_entries;
@@ -280,6 +284,9 @@ int main(int argc, char** argv) {
         return 2;
     }
     const std::uintptr_t stack_base = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
+#ifdef MZM_PERF_PROFILE
+    mzm_perf::init();
+#endif
     const std::string emu_dir = argc > 3 ? argv[3] : MZM_NES_EMULATOR_DIR;
     std::uint64_t diag_from = 0, diag_count = 0;
     {
@@ -736,6 +743,9 @@ int main(int argc, char** argv) {
     (void)ran_input; (void)keys_pressed_logged; (void)frame_first_dma; (void)g_last_sram_pc;
 
     const std::uint64_t final_frame = ppu.frame_count();
+#ifdef MZM_PERF_PROFILE
+    mzm_perf::report(final_frame);
+#endif
     checkpoint("final", final_frame);
 
     // ---- report ----

@@ -11,6 +11,16 @@ set(GBARECOMP_ROOT ""
 set(RECOMP_UI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui"
     CACHE PATH "Path to the pinned recomp-ui checkout")
 option(MZM_RECOMP_UI "Build the recomp-ui pre-boot launcher" ON)
+# NES-PERF-1: opt-in timing/counter instrumentation for the NES harness only.
+option(MZM_PERF_PROFILE "Instrument mzm_nes_behavior_test (profiling builds only)" OFF)
+option(MZM_PERF_WRAP_TICK "With MZM_PERF_PROFILE: also count guest instructions (adds a call per instruction)" OFF)
+
+if(MZM_PERF_PROFILE)
+    add_compile_definitions(MZM_PERF_PROFILE=1)
+    if(MZM_PERF_WRAP_TICK)
+        add_compile_definitions(MZM_PERF_WRAP_TICK=1)
+    endif()
+endif()
 
 if(NOT GBARECOMP_ROOT)
     message(FATAL_ERROR
@@ -295,6 +305,29 @@ if(BUILD_TESTING)
     endif()
 endif()
 
+
+# NES-PERF-1: attach the profiling shims to every target that links the RAM hook.
+if(MZM_PERF_PROFILE)
+    set(_mzm_wraps
+        runtime_dispatch runtime_dispatch_tail runtime_dispatch_with_exchange
+        runtime_dispatch_with_exchange_tail runtime_tail_drain
+        _ZN3gba6GbaPpu4tickEjt _ZN3gba6GbaPpu15render_scanlineEjtPKhS2_S2_S2_
+        _ZN3gba8GbaAudio4tickEj _ZN3gba5GbaIo11tick_timersEj _ZN3gba5GbaIo13run_timed_dmaEi)
+    if(MZM_PERF_WRAP_TICK)
+        list(APPEND _mzm_wraps runtime_tick)
+    endif()
+    foreach(_t MZMRecomp mzm_nes_behavior_test mzm_nes_payload_frontier_test
+               mzm_nes_emulator_frontier_test mzm_nes_scope_policy_test
+               mzm_nes_stack_helper_test mzm_chozodia_native_test)
+        if(TARGET ${_t})
+            target_sources(${_t} PRIVATE src/mzm_perf_profile.cpp)
+            target_include_directories(${_t} PRIVATE src)
+            foreach(_w IN LISTS _mzm_wraps)
+                target_link_options(${_t} PRIVATE "-Wl,--wrap=${_w}")
+            endforeach()
+        endif()
+    endforeach()
+endif()
 
 # ─────────────────────────────────────────────────────────────────────
 # Optional recomp-ui pre-boot launcher.

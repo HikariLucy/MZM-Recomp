@@ -4,6 +4,7 @@
 #include "mzm_nes_payload_resolver.h"
 #include "mzm_nes_emulator_resolver.h"
 #include "mzm_milestone_probe.h"
+#include "mzm_perf_profile.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -124,12 +125,21 @@ __attribute__((noinline)) static int nes_verify_entry(
     auto scope_ok = [&](std::size_t i) {
         const auto& sc = spec.scopes[i];
         auto& snapshot = snapshots[static_cast<std::size_t>(emu_kind)][i];
-        if (live && mzm_nes_emulator::matches_snapshot(spec, sc, live, snapshot))
-            return true;
+        {
+            MZM_PERF_SCOPE(B_VERIFY_SNAP);
+            if (live && mzm_nes_emulator::matches_snapshot(spec, sc, live, snapshot)) {
+                MZM_PERF_COUNT(snapshot_hits);
+                return true;
+            }
+        }
+        MZM_PERF_SCOPE(B_VERIFY_SHA);
+        MZM_PERF_COUNT(sha_fallbacks);
         snapshot.clear();
         if (!mzm_nes_emulator::verify_scope(
-                sc, [](std::uint32_t a) { return bus_read_u8(a); }))
+                sc, [](std::uint32_t a) { return bus_read_u8(a); })) {
+            MZM_PERF_COUNT(sha_fail);
             return false;
+        }
         for (std::size_t r = 0; r < sc.gate_count; ++r)
             for (std::uint32_t a = sc.gate[r].start; a < sc.gate[r].end; ++a)
                 snapshot.push_back(bus_read_u8(a));
@@ -201,6 +211,8 @@ __attribute__((noinline)) static void run_stack_helper(std::size_t i, std::uint3
 }
 
 int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
+    MZM_PERF_SCOPE(B_HOOK);
+    MZM_PERF_COUNT(hook_calls);
     ++g_stats.hook_calls;
     {
         // Host-stack audit: the generated code recurses natively through this
@@ -299,8 +311,16 @@ int mzm_ram_dispatch(std::uint32_t pc, int thumb) {
                     handles_ready = true;
                 }
                 const int handle = handles[static_cast<std::size_t>(emu_kind)];
+#ifdef MZM_PERF_PROFILE
+                if (mzm_perf::g_on && handle > 0) {
+                    MZM_PERF_COUNT(invoke_in_image);
+                    { MZM_PERF_SCOPE(B_SCAN); mzm_perf::scan_private(handle, pc, thumb); }
+                    MZM_PERF_SW(B_NATIVE);   // the real lookup + native body run in this bucket
+                }
+#endif
                 if (handle > 0 &&
                     runtime_invoke_private_entry_in_image(handle, pc, thumb)) {
+                    MZM_PERF_COUNT(invoke_ok);
                     return 1;
                 }
                 --st.matches;
