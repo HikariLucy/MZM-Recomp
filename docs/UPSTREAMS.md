@@ -68,6 +68,14 @@ transfers that never return (bounded native stack) and sound-FIFO DMA semantics
 (`CNT_H` bit 10 clear, 32-bit fixed-destination bursts routed by FIFO address); see
 `docs/M4-NES-METROID.md`.
 
+**ENHANCEMENTS-1 build pin:** the MZM *build* now pins `822221636db6f5b314ca081c6939c7081b6ddf1f`
+(branch `feat/host-display-enhancements`, three commits on top of `0b9d032`: display
+settings model, presentation renderer, opt-in enhancements menu). It changes only the
+runtime/renderer; the recompiler and generated code are untouched, so the *generator*
+pin (`scripts/generate-m1.sh`) stays at `0b9d032`. All new `RunOptions` fields default off,
+so other consumers of the framework are unaffected. Local only: not pushed or merged.
+See `docs/ENHANCEMENTS.md`.
+
 This local revision combines MOSAIC, WAITCNT, private relocated entry,
 non-returning calls (`returns = false`), terminal SoftReset control-flow,
 multi-image `[[executable_image]]` architecture, secondary image private_entry
