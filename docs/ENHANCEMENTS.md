@@ -70,8 +70,60 @@ of scope.
   destination rectangles, Linear/CRT/colour pixel checks with exact restore on turning them
   off, overlay, persistence across restart, invalid config, restore defaults, and the
   strict-static counters afterwards.
+* `mzm-nes-pause` (CTest, same skip rule): pause/resume inside the real NES, see below.
 * Not testable without a GPU/display and therefore not faked: true fullscreen on a real
   monitor, real refresh-rate reporting, VSync pacing on hardware.
+
+## Closing qualification (ENHANCEMENTS-1)
+
+**GBARecomp upstream suite** at framework `bc65c55` (the pinned head): **56 / 56 pass,
+0 fail, 0 not run**, in both the plain configuration and the one built with the runtime UI
+(pre-Enhancements baseline: 56/56). Covers tail dispatch, FIFO DMA, multi-image,
+image-scoped CFG, private relocation, conditional PC load, return continuation, runtime
+tests. (The standalone tool `bios_smoke` does not link when the runtime UI is enabled
+without a host application; this happens identically at `0b9d032` and is not a test.)
+
+**NES pause/resume** (`scripts/run-nes-pause.py`, no guest memory written): the qualified
+harness plays the real route (title, START, gameplay input) and serialises the machine at
+guest frame 2000 through the framework's own save-state container (test-only
+`MZM_NES_SAVE_STATE`); the shipped windowed host loads it and the player's route (ESC menu,
+pause hotkey) is exercised inside the NES.
+
+| | frames / 1.5 s | notes |
+|---|---|---|
+| before the hold | 37 | the windowed NES runs below 60 Hz (known, separate limitation) |
+| held (menu), 25 holds | 0 (0 over all holds) | IWRAM/EWRAM/VRAM/PAL/OAM hash identical across a 1.5 s hold; menu still drawn |
+| after the holds | 37 | no catch-up burst (366 frames in the run, ceiling 971) |
+| Shift+P hold | 0 | resumes at the same rate |
+
+Audio (dummy SDL driver): bridge pushes continue after the cycles; the corrected
+underrun counter stays 0 and flat while the raw bridge counter (about 1.4 M, all during the
+intentional holds) is excluded; MZM (`mzm-host-display`) behaves the same. The counter's
+sensitivity to a *real* underrun was not demonstrated (none could be induced). Strict
+counters at exit of a second session with the same route and 10 cycles: all zero.
+
+**Default overhead.** The earlier "about 3%" came from comparing against a differently
+built binary. With MZM sources, compiler flags and recomp-ui held identical and only the
+framework changed (`0b9d032` vs `bc65c55`, defaults, menu closed, CRT off, FPS off), the
+CPU cost over 1800 windowed frames is indistinguishable from run-to-run noise: 7 interleaved
+runs each, mean 13.54 s vs 13.76 s (+1.6%, spread about 1 s); headless (no present path)
+5 runs each, 4.77 s vs 4.82 s. No component was isolated because none is measurable. The
+per-frame default path was audited: a settings-struct copy and one layout compare in
+`present()`, one compare in `note_emulated_frames`, one menu-open check in the pause loop; no
+INI parsing (it happens only on an accepted menu change and at start), no allocation,
+string formatting, shader work or GL state change while everything is off.
+
+**CRT Lite cost.** Mean 19.63 s vs 13.90 s for the baseline in the same round (about +5.7 s
+of CPU over 1800 frames, roughly +3 ms/frame) under software GL (llvmpipe in a nested X
+server). That is a software-rasteriser figure; it says nothing about a GPU.
+
+## Known limitations
+* NES throughput in the windowed host is below real time (about 37 fps here); unchanged by
+  Enhancements.
+* No Windows run, no real fullscreen/VSync/high-refresh run, no gamepad menu navigation, no
+  Alt+Enter, no measured LCD profile (all ENHANCEMENTS-2).
+* Audio verified with the dummy driver only.
+* Performance figures are software-GL CPU time in Xephyr.
 
 ## Experimental / known limits
 
