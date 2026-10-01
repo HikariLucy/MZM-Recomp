@@ -26,6 +26,7 @@ Exit status 77 (ctest SKIP) when Xephyr, python-xlib or Pillow are unavailable.
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -116,6 +117,13 @@ class Xserver:
         self.d.sync()
         time.sleep(0.15)
 
+    def click(self, x, y):
+        self.move(x, y)
+        self._fake(X.ButtonPress, 1)
+        time.sleep(0.08)
+        self._fake(X.ButtonRelease, 1)
+        time.sleep(0.2)
+
     def game_window(self, timeout=30):
         end = time.time() + timeout
         while time.time() < end:
@@ -163,14 +171,17 @@ class Xserver:
 class Game:
     """MZMRecomp in a window, with stdout/stderr captured and the observe port open."""
 
-    def __init__(self, binary, config, rom, bios, display_name, workdir, observe=True):
+    def __init__(self, binary, config, rom, bios, display_name, workdir, observe=True,
+                 extra_args=(), extra_env=None):
         self.port = free_port()
         env = dict(os.environ, DISPLAY=display_name, GBARECOMP_STRICT_STATIC="1",
-                   SDL_AUDIODRIVER="dummy")
+                   SDL_AUDIODRIVER="dummy", GBARECOMP_AUDIO_PROBE="1",
+                   **(extra_env or {}))
         self.lines = []
         self.proc = subprocess.Popen(
             [binary, "--no-launcher", "--bios", bios, "--rom", rom, "--config", config,
-             "--window"] + (["--tcp-observe", str(self.port)] if observe else []),
+             "--window"] + list(extra_args) +
+            (["--tcp-observe", str(self.port)] if observe else []),
             env=env, cwd=workdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
@@ -191,6 +202,14 @@ class Game:
             except OSError:
                 time.sleep(0.1)
         raise RuntimeError("observe port unavailable")
+
+    def audio_probe(self):
+        """(pushes, raw bridge underruns, net underruns) of the latest probe line, or None."""
+        for line in reversed(self.lines):
+            m = re.search(r"audio-probe\] pushes=(\d+) .*bridge_underrun=(\d+).*net_underrun=(\d+)", line)
+            if m:
+                return tuple(int(x) for x in m.groups())
+        return None
 
     def last_layout(self):
         for line in reversed(self.lines):
@@ -318,6 +337,78 @@ def read_ini(path):
         return ""
 
 
+def scale_presets_resume_borderless(args):
+    """Window-scale presets through the menu, the Resume button, Borderless (own larger screen)."""
+    print("== H: window scale presets, Resume button, Borderless (1600x1000 nested screen)")
+    work = tempfile.mkdtemp(prefix="mzm-display-h-")
+    exe = os.path.join(work, "MZMRecomp")
+    shutil.copy2(args.binary, exe)
+    xs = Xserver(1600, 1000)
+    game = None
+    try:
+        game = Game(exe, args.config, args.rom, args.bios, xs.name, work)
+        win = xs.game_window()
+        xs.move(2, 2)
+        time.sleep(6)
+        menu = Menu(xs)
+
+        def size():
+            g = win.get_geometry()
+            return g.width, g.height
+
+        check(size() == (720, 480), f"default window is 3x ({size()})")
+        menu.activate("Display", DISPLAY["Window scale"], presses=2, key="Left")
+        time.sleep(0.8)
+        check(size() == (240, 160), f"menu scale 1x -> 240x160 ({size()})")
+        check(game.last_layout() == (0, 0, 240, 160), f"1x destination is native ({game.last_layout()})")
+        menu.activate("Display", DISPLAY["Window scale"], presses=5, key="Right")
+        time.sleep(0.8)
+        check(size() == (1440, 960), f"menu scale 6x -> 1440x960 ({size()})")
+        check(game.last_layout() == (0, 0, 1440, 960), f"6x destination fills the window ({game.last_layout()})")
+        menu.activate("Display", DISPLAY["Window scale"], presses=3, key="Left")
+        time.sleep(0.8)
+        check(size() == (720, 480), f"menu scale back to 3x ({size()})")
+
+        # Resume button: ESC opens, a mouse click on the footer Resume button closes.
+        g = win.get_geometry()
+        f0 = game.frame()
+        menu.open()
+        time.sleep(0.4)
+        a = game.frame()
+        time.sleep(1.0)
+        check(game.frame() - a <= 1, "guest held while the menu is open")
+        xs.click(g.x + 627, g.y + 410)
+        time.sleep(0.5)
+        b = game.frame()
+        time.sleep(1.5)
+        check(game.frame() - b >= 60, "Resume button closes the menu and the guest runs again")
+        xs.move(2, 2)
+
+        # Borderless fullscreen (needs a window manager in some setups; reported honestly).
+        menu.activate("Display", DISPLAY["Fullscreen"], presses=1, key="Right")
+        game.wait_layout((50, 0, 1500, 1000), timeout=8)
+        # Without a window manager the X window geometry query is stale, so the renderer's own
+        # destination rectangle is the evidence.
+        lay = game.last_layout()
+        check(lay == (50, 0, 1500, 1000),
+              f"Borderless fullscreen letterboxes 3:2 into the 1600x1000 screen ({lay})")
+        menu.activate("Display", DISPLAY["Fullscreen"], presses=1, key="Left")
+        game.wait_layout((0, 0, 720, 480), timeout=8)
+        lay = game.last_layout()
+        check(lay is not None and lay[2] == 720 and lay[3] == 480,
+              f"back to a 720x480 window ({lay})")
+        check(game.alive(), "host stays up through scale/Resume/Borderless")
+    except Exception:
+        if game:
+            print("---- game log ----\n" + game.log()[-3000:])
+        raise
+    finally:
+        if game and game.alive():
+            game.proc.kill()
+        xs.stop()
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("binary")
@@ -346,6 +437,9 @@ def main():
         f1 = game.frame()
         check(f1 - f0 >= 60, f"guest advances at ~60 Hz with the menu closed ({f1 - f0} frames/1.5s)")
         base = xs.grab(win)
+        pb_play = game.audio_probe()
+        check(pb_play is not None and pb_play[1] == 0 and pb_play[2] == 0,
+              f"normal play: no underruns at all, raw or corrected ({pb_play})")
 
         menu = Menu(xs)
         menu.open()
@@ -398,6 +492,17 @@ def main():
         z0 = game.frame()
         time.sleep(1.5)
         check(55 <= game.frame() - z0 <= 100, "guest rate is back to ~60 Hz after the stress")
+        # The holds starve the audio ring on purpose: the raw bridge counter grows, the corrected
+        # one (the overlay's) must not, including the ~400 ms refill after each resume.
+        time.sleep(3.0)
+        pb_a = game.audio_probe()
+        time.sleep(3.0)
+        pb_b = game.audio_probe()
+        check(pb_a and pb_b and pb_b[0] > pb_a[0], f"audio pushes keep flowing after the holds ({pb_a} -> {pb_b})")
+        check(pb_b and pb_b[1] > 0 and pb_b[2] == 0,
+              f"intentional starvation is excluded (raw {pb_b and pb_b[1]}, corrected {pb_b and pb_b[2]})")
+        check(pb_a and pb_b and pb_b[1] == pb_a[1] and pb_b[2] == pb_a[2],
+              "after the refill grace both counters are flat (no underruns while playing)")
 
         print("== D: filtering and CRT Lite (guest frozen with the pause hotkey for stable frames)")
         xs.key("p", shift=True)                 # host pause: identical frames
@@ -566,6 +671,8 @@ def main():
             game.proc.kill()
         xs.stop()
         shutil.rmtree(work, ignore_errors=True)
+
+    scale_presets_resume_borderless(args)
 
     if FAILURES:
         print(f"\n{len(FAILURES)} check(s) failed")

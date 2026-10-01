@@ -267,6 +267,7 @@ if(BUILD_TESTING)
                 $<TARGET_OBJECTS:mzm_generated_objects>)
             target_include_directories(mzm_nes_behavior_test PRIVATE
                 src generated
+                "${GBARECOMP_ROOT}/src/debug"
                 "${GBARECOMP_ROOT}/src/armv4t"
                 "${GBARECOMP_ROOT}/src/gba"
                 "${GBARECOMP_ROOT}/src/runtime")
@@ -310,6 +311,14 @@ if(BUILD_TESTING)
                         "${CMAKE_CURRENT_SOURCE_DIR}/configs/mzm-us.toml"
                         "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
                 set_tests_properties(mzm-host-display PROPERTIES TIMEOUT 600
+                    SKIP_RETURN_CODE 77)
+                add_test(NAME mzm-nes-pause
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-nes-pause.py"
+                        "$<TARGET_FILE:mzm_nes_behavior_test>" "$<TARGET_FILE:MZMRecomp>"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/configs/mzm-us.toml"
+                        "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
+                set_tests_properties(mzm-nes-pause PROPERTIES TIMEOUT 900
                     SKIP_RETURN_CODE 77)
             endif()
         endif()

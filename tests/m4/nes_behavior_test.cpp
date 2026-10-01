@@ -44,6 +44,7 @@
 #include "runtime_bus_bridge.h"
 #include "self_heal.h"
 #include "sha1.h"
+#include "snapshot.h"
 
 extern "C" uint32_t g_irq_nest_depth;
 
@@ -523,7 +524,29 @@ int main(int argc, char** argv) {
         }
     }
     // Frame-boundary work: input injection, audio capture window, sampling.
+    // TEST-ONLY (MZM_NES_SAVE_STATE="frame:path"): serialise the machine through the
+    // framework's own save-state container at that frame boundary. Reads guest state only;
+    // lets the shipped windowed host resume inside the NES (scripts/run-nes-pause.py).
+    std::uint64_t save_state_frame = ~0ull; std::string save_state_path;
+    {
+        const std::string v = env_or("MZM_NES_SAVE_STATE", "");
+        const std::size_t c = v.find(':');
+        if (c != std::string::npos) {
+            save_state_frame = std::strtoull(v.substr(0, c).c_str(), nullptr, 10);
+            save_state_path = v.substr(c + 1);
+        }
+    }
+    std::uint64_t ss_taken = 0, ss_cycles = 0, ss_vblank = 0;
     auto on_new_frame = [&](std::uint64_t frame) {
+        if (frame == save_state_frame && !save_state_path.empty()) {
+            gbarecomp::debug::SnapshotContext sc;
+            sc.bus = &bus; sc.ppu = &ppu; sc.rom_sha1 = kExpectedRomSha1;
+            sc.taken = &ss_taken; sc.cycles_elapsed = &ss_cycles; sc.vblank_count = &ss_vblank;
+            std::string err;
+            const bool ok = gbarecomp::debug::save_state(save_state_path.c_str(), sc, &err);
+            std::printf("NES3 save_state frame=%llu pc=0x%08X ok=%d %s\n", (unsigned long long)frame,
+                        g_cpu.R[15], ok ? 1 : 0, err.c_str());
+        }
         // Diagnostic (MZM_NES_DIAG_FRAMES="from,count"): guest state at each frame boundary.
         if (diag_count && frame >= diag_from && frame < diag_from + diag_count)
             std::printf("NES3 diag frame=%llu pc=0x%08X cpsr=0x%08X r0=0x%08X r1=0x%08X vcount=%u dispstat=0x%04X halted=%d\n",
