@@ -260,6 +260,20 @@ if(BUILD_TESTING)
                         "$<TARGET_FILE:mzm_nes_behavior_test>" "${MZM_TEST_ROM}"
                         "${MZM_TEST_BIOS}")
                 set_tests_properties(mzm-nes-save-roundtrip PROPERTIES TIMEOUT 1500)
+                add_test(NAME mzm-host-save-persistence
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-host-save-persistence.py"
+                        "$<TARGET_FILE:mzm_nes_behavior_test>" "$<TARGET_FILE:MZMRecomp>"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/configs/mzm-us.toml"
+                        "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
+                set_tests_properties(mzm-host-save-persistence PROPERTIES TIMEOUT 1500)
+                add_test(NAME mzm-host-savestate
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-host-savestate.py"
+                        "$<TARGET_FILE:MZMRecomp>"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/configs/mzm-us.toml"
+                        "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
+                set_tests_properties(mzm-host-savestate PROPERTIES TIMEOUT 600)
             endif()
         endif()
         add_executable(mzm_chozodia_native_test
