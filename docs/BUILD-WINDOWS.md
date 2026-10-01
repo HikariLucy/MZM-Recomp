@@ -137,3 +137,23 @@ must launch, select their files, PLAY, and capture output showing
 `dispatch_misses=0`, `interpreted_insns=0`, `unmapped=0`, and
 `io_unhandled=0`. Wine can provide an additional smoke check; it does not
 replace native Windows testing.
+
+## Beta 2 additions
+
+- Baseline: `feat/windows-beta-2` = `feat/m4-compat-harness` plus the Windows work
+  of `feat/windows-beta` ported by cherry-pick (no runtime/corpus from the old
+  branch). The corpus and BIOS output are regenerated with
+  `scripts/generate-m1.sh` / `scripts/generate-bios-m2.sh` at the pinned
+  GBARecomp `0b9d032` and are byte-identical to the M4 baseline.
+- Output: `dist/MZMRecompiled-Beta-2-Windows-x64/` with `BUILD-INFO.txt`,
+  `README.txt`, `TESTER-CHECKLIST.txt`. The ZIP is named
+  `...-RUNTIME-UNVERIFIED.zip` unless `MZM_WINDOWS_SMOKE=PASS` is set after a
+  real Windows x86_64 smoke run.
+- Logs: on Windows `MZMRecomp.exe` sends stdout/stderr (runtime banners,
+  `cpu_backend`, `strict_static`, dispatch counters, fatal reasons) to
+  `%LOCALAPPDATA%\MZMRecompiled\logs\latest.log` (truncated per run); session
+  events keep appending to `mzm-recompiled.log` with build and GBARecomp SHA.
+- Stack: the PE reserve is GBARecomp's default `GBARECOMP_HOST_STACK_RESERVE_BYTES`
+  (16 MiB, commit 4 KiB). Beta 2 does not raise it. The bounded hook needs about
+  450 KiB on Linux; a Windows-side test of a smaller reserve is not done.
+- The Wine-less Linux host cannot execute the `.exe`: Windows runtime smoke is PENDING.
