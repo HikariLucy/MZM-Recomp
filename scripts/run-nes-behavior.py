@@ -111,6 +111,15 @@ def qualify(binary, rom, bios):
     parts = [l for l in fr[1] if l.startswith("NES3 part part")]
     check(parts and all("invoke_fail=0 no_corpus=0" in l for l in parts),
           "no NES part ever failed to invoke or lacked a corpus", failures)
+    entered = {}
+    for l in parts:
+        m = re.match(r"NES3 part (part\d) attempts=(\d+) verified=(\d+) matches=(\d+)", l)
+        if m:
+            entered[m[1]] = (int(m[3]), int(m[4]))
+    check(set(entered) == {f"part{i}" for i in range(1, 7)} and all(v == m for v, m in entered.values()),
+          "all six NES parts ran natively in the scripted session (every verified entry matched a native body)", failures)
+    check(all(entered.get(f"part{i}", (0, 0))[0] >= 1 for i in range(1, 7)) and entered.get("part2", (0,))[0] >= 1_000_000,
+          "every part was entered at least once and Part 2 (the 6502 core) over a million times", failures)
     check(all("verify_fail=0" in l for l in parts if " part2 " not in l),
           "only the Part 2 IWRAM gate rejects (MZM code now lives there); every other part verify_fail=0", failures)
     check(any(l.startswith("NES3 ckpt frame=3000 ") and "resolver_fail=0" in l for l in fr[1]),
