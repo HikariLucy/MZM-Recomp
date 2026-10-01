@@ -128,6 +128,13 @@ if(BUILD_TESTING AND EXISTS "${RECOMP_UI_ROOT}/src/common/sha1.c")
 endif()
 
 if(BUILD_TESTING)
+    # Host display settings (presentation only). Header-only logic from the
+    # pinned framework; needs no window, ROM or generated code.
+    add_executable(mzm_display_settings_test tests/enhancements/display_settings_test.cpp)
+    target_include_directories(mzm_display_settings_test PRIVATE
+        "${GBARECOMP_ROOT}/src/runtime")
+    add_test(NAME mzm-display-settings COMMAND mzm_display_settings_test)
+
     add_executable(mzm_haze_resolver_test tests/m4/haze_resolver_test.cpp)
     target_include_directories(mzm_haze_resolver_test PRIVATE src)
     add_test(NAME mzm-haze-resolver COMMAND mzm_haze_resolver_test)
@@ -296,6 +303,14 @@ if(BUILD_TESTING)
                         "${CMAKE_CURRENT_SOURCE_DIR}/configs/mzm-us.toml"
                         "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
                 set_tests_properties(mzm-host-savestate PROPERTIES TIMEOUT 600)
+                add_test(NAME mzm-host-display
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-host-display.py"
+                        "$<TARGET_FILE:MZMRecomp>"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/configs/mzm-us.toml"
+                        "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
+                set_tests_properties(mzm-host-display PROPERTIES TIMEOUT 600
+                    SKIP_RETURN_CODE 77)
             endif()
         endif()
         add_executable(mzm_chozodia_native_test
