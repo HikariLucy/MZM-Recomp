@@ -54,7 +54,7 @@ e7728148c6829ba526f682876430a0c9022dc6c0
 M4 integration revision used by the current MZM build:
 
 ```text
-2acbc2b99fcf7e925a1584fbd39faeb4b5567be4
+266f82f556fe995ece1bfc558cfe59496b0ef31c
 ```
 
 **RC-INTEGRATION-PRECHECK-1 (this branch only):** the single framework *and* generator pin is
