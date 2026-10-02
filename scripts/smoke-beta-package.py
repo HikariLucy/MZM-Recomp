@@ -157,7 +157,18 @@ check(a == b, "ESC opens the Enhancements menu and pauses the guest")
 xs.key("Escape"); time.sleep(0.8)
 a = frame(); time.sleep(0.6); b = frame()
 check(b is not None and a is not None and b > a, "ESC closes the menu and the guest resumes")
-proc.kill(); proc.wait(); time.sleep(0.5)
+print("[privacy]")
+ss = subprocess.run(["ss", "-H", "-tunap"], capture_output=True, text=True).stdout.splitlines()
+mine = [l for l in ss if f"pid={proc.pid}," in l]
+def loopback(addr): return addr.startswith("127.") or addr.startswith("[::1]") or addr.startswith("*") or addr.startswith("0.0.0.0")
+remote = [l for l in mine if not loopback(l.split()[5]) ]
+udp = [l for l in mine if l.startswith("udp")]
+check(not remote and not udp, "no non-loopback network connection and no UDP socket while playing"
+      + (f" ({remote[:2]})" if remote else ""))
+print("  info  sockets owned by the process:", [" ".join(l.split()[:6]) for l in mine])
+print("[crash]")
+os.kill(proc.pid, 11)          # SIGSEGV: the last-gasp handler must leave a marker in latest.log
+proc.wait(); time.sleep(0.8)
 
 print("[files]")
 logdir = os.path.join(state, "MZMRecompiled", "logs")
@@ -169,6 +180,7 @@ for needle in ["MZMRecompiled release=\"Beta 3\"", "build=", "gbarecomp=", "os=l
                "host_window: renderer=", "display="]:
     check(needle in log, f"latest.log contains {needle!r}")
 check("MZM_BUILD" not in log, "no raw placeholders in log")
+check("MZMRecompiled CRASH: fatal signal SIGSEGV" in log, "a crash (SIGSEGV sent to the process) leaves a marker in latest.log")
 check(os.path.isfile(os.path.join(logdir, "mzm-recompiled.log")), "mzm-recompiled.log (event history) exists")
 leak = [l for l in log.splitlines() if root in l or "/home/hikarilucy/proyectos" in l]
 check(not leak, "latest.log does not mention the repo or the package directory" + (f" ({leak[:2]})" if leak else ""))
