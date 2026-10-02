@@ -76,6 +76,20 @@ jobs:
         shell: powershell
         run: |
           Write-Host "=== Compiling SDL UWP Micro-Smoke Test ==="
+          New-Item -ItemType Directory -Path "smoke_test" -Force | Out-Null
+          $sdlLib = (Get-ChildItem -Path "sdl2-src\VisualC-WinRT" -Filter "SDL2.lib" -Recurse | Select-Object -First 1).FullName.Replace('\', '/')
+          $sdlInc = (Resolve-Path "sdl2-src\include").Path.Replace('\', '/')
+          
+          $smokeCmake = @"
+          cmake_minimum_required(VERSION 3.20)
+          project(sdl_smoke CXX)
+          add_executable(sdl_smoke sdl_smoke.cpp)
+          target_include_directories(sdl_smoke PRIVATE "$sdlInc")
+          target_link_libraries(sdl_smoke PRIVATE "$sdlLib")
+          set_source_files_properties(sdl_smoke.cpp PROPERTIES COMPILE_FLAGS "/ZW")
+          "@
+          Set-Content -Path "smoke_test\CMakeLists.txt" -Value $smokeCmake
+
           $smokeCode = @"
           #include <windows.h>
           #include <SDL.h>
@@ -91,17 +105,22 @@ jobs:
               return SDL_WinRTRunApp(SDL_main, NULL);
           }
           "@
-          Set-Content -Path "sdl_smoke.cpp" -Value $smokeCode
+          Set-Content -Path "smoke_test\sdl_smoke.cpp" -Value $smokeCode
 
-          $sdlLib = (Get-ChildItem -Path "sdl2-src\VisualC-WinRT" -Filter "SDL2.lib" -Recurse | Select-Object -First 1).FullName
-          Write-Host "Found SDL2.lib at: $sdlLib"
+          cmake -S smoke_test -B smoke_test\build -G "Visual Studio 17 2022" -A x64 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          cl /nologo /ZW /EHsc /MD /I sdl2-src\include sdl_smoke.cpp $sdlLib /link /SUBSYSTEM:WINDOWS /APPCONTAINER WindowsApp.lib
-          if ($LASTEXITCODE -eq 0) {
-              Write-Host "SDL UWP micro-smoke link SUCCESS!"
-          } else {
-              Write-Warning "SDL UWP micro-smoke cl test exited with code $LASTEXITCODE"
-          }
+          cmake --build smoke_test\build --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "SDL UWP micro-smoke test BUILT SUCCESSFULLY!"
+
+      - name: Phase 4 — Restore Recompiled Guest Corpus
+        shell: bash
+        run: |
+          echo "=== Unpacking Recompiled Corpus ==="
+          mkdir -p generated
+          openssl enc -d -aes-256-cbc -pbkdf2 -in assets/uwp/mzm_generated.tar.gz.enc -pass pass:"${{ secrets.MZM_BUILD_KEY }}" | tar -xzf - -C generated
+          ls -la generated/ | head -n 10
 
       - name: Phase 5 — Configure & Build MZMRecomp UWP x64
         shell: cmd
