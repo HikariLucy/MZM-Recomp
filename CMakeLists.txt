@@ -159,6 +159,9 @@ if(MZM_PLATFORM_UWP)
     target_sources(MZMRecomp PRIVATE src/platform/uwp/SDL_winrt_main_NonXAML.cpp)
     set_source_files_properties(src/platform/uwp/SDL_winrt_main_NonXAML.cpp PROPERTIES
         COMPILE_OPTIONS "/ZW")
+    set_target_properties(MZMRecomp PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
 endif()
 
 execute_process(COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse HEAD
