@@ -27,6 +27,17 @@ draw_sections/draw_items), so a stray pointer silently re-targets the keyboard n
 pointer is therefore parked and grabbed inside the nested server (confined to a 1x1 sink window)
 except in the two steps that need it, and keyboard focus is set explicitly on the game window.
 
+  G  (ENHANCEMENTS-2) Alt+Enter toggles Windowed <-> Borderless, persists it, ignores key
+     auto-repeat and works with the menu open; the menu is operable from a (virtual) game
+     controller; the guest never receives controller input the menu owns, nor a button that
+     was still held when the menu closed; CRT Soft/Lite/Strong/Custom and the Presentation
+     Refresh option behave and persist; with Monitor Refresh the guest stays at ~59.7 Hz while
+     PRESENT rises and the machine hash does not change across repeated presents.
+     The monitor refresh in G is FORCED (GBARECOMP_FORCE_REFRESH_HZ=144) because a nested X
+     server reports no real rate: that part is synthetic / nested-display evidence, not a
+     144 Hz hardware pass. The controller is an SDL virtual joystick driven through
+     GBARECOMP_TEST_VIRTUAL_PAD (no system-wide input device is created).
+
 Presentation only: nothing here changes guest state, and the only guest-facing observation is
 the frame counter (read over the observe TCP port) used to prove the pause.
 
@@ -198,6 +209,21 @@ class Xserver:
         if shift:
             self._fake(X.KeyRelease, sh)
         time.sleep(0.12)
+
+    def combo(self, mods, name, hold=0.08):
+        """Press `mods` (keysym names) and `name`, hold, release in reverse. A long `hold` lets the
+        X server generate key auto-repeat, which the host must not turn into extra toggles."""
+        self.ensure_focus()
+        mkc = [self.d.keysym_to_keycode(XK.string_to_keysym(m)) for m in mods]
+        kc = self.d.keysym_to_keycode(XK.string_to_keysym(name))
+        for m in mkc:
+            self._fake(X.KeyPress, m)
+        self._fake(X.KeyPress, kc)
+        time.sleep(hold)
+        self._fake(X.KeyRelease, kc)
+        for m in reversed(mkc):
+            self._fake(X.KeyRelease, m)
+        time.sleep(0.15)
 
     def move(self, x, y):
         xtest.fake_input(self.d, X.MotionNotify, False, X.CurrentTime, self.d.screen().root, x, y)
@@ -469,9 +495,9 @@ def row_ratio_profile(off, on, period, min_luma=90):
 # runtime builds them; sections appear in order of first use).
 SECTIONS = ["Display", "Graphics", "Audio", "System", "Assist Tools", "Performance"]
 DISPLAY = {"Fullscreen": 0, "Window scale": 1, "Aspect ratio": 2, "Restore display defaults": 3}
-GRAPHICS = {"Integer scaling": 0, "Linear filter": 1, "CRT Lite": 2, "Scanline strength": 3,
+GRAPHICS = {"Integer scaling": 0, "Linear filter": 1, "CRT": 2, "Scanline strength": 3,
             "Color correction": 4}
-PERFORMANCE = {"Show FPS": 0, "VSync": 1, "Performance overlay": 2}
+PERFORMANCE = {"Show FPS": 0, "VSync": 1, "Performance overlay": 2, "Presentation Refresh": 3}
 
 
 class Menu:
@@ -647,6 +673,312 @@ def scale_presets_resume_borderless(args):
         shutil.rmtree(work, ignore_errors=True)
 
 
+class VirtualPad:
+    """Drives the SDL virtual controller the host attaches under GBARECOMP_TEST_VIRTUAL_PAD."""
+
+    def __init__(self, path):
+        self.path = path
+        open(path, "w").close()
+
+    def _w(self, line):
+        with open(self.path, "a") as f:
+            f.write(line + "\n")
+
+    def down(self, name):
+        self._w(f"b {name} 1")
+
+    def up(self, name):
+        self._w(f"b {name} 0")
+
+    def tap(self, name, hold=0.12, gap=0.2):
+        self.down(name)
+        time.sleep(hold)
+        self.up(name)
+        time.sleep(gap)
+
+    def stick(self, axis, value):
+        self._w(f"a {axis} {value}")
+
+    def stick_tap(self, axis, value, hold=0.12, gap=0.25):
+        self.stick(axis, value)
+        time.sleep(hold)
+        self.stick(axis, 0)
+        time.sleep(gap)
+
+
+def read_record(path):
+    """(frame, keyinput) rows of the guest KEYINPUT trace (what the guest actually read)."""
+    rows = []
+    try:
+        for line in open(path):
+            if line.startswith("#") or "," not in line:
+                continue
+            f, k = line.strip().split(",")
+            rows.append((int(f), int(k, 16)))
+    except OSError:
+        pass
+    return rows
+
+
+def observe(game, cmd):
+    try:
+        with socket.create_connection(("127.0.0.1", game.port), timeout=5) as sk:
+            sk.sendall((json.dumps({"cmd": cmd}) + "\n").encode())
+            return json.loads(sk.makefile().readline())
+    except Exception:
+        return None
+
+
+def enhancements_2(args):
+    """ENHANCEMENTS-2 host controls: Alt+Enter, controller navigation and input ownership, CRT
+    presets, Presentation Refresh (forced 144 Hz: synthetic evidence)."""
+    print("== G: Alt+Enter, controller navigation, input ownership, Presentation Refresh "
+          "(monitor refresh forced to 144 Hz: synthetic / nested-display evidence)")
+    work = tempfile.mkdtemp(prefix="mzm-display-g-")
+    exe = os.path.join(work, "MZMRecomp")
+    shutil.copy2(args.binary, exe)
+    ini = os.path.join(work, "config.ini")
+    cmdfile = os.path.join(work, "pad.cmd")
+    record = os.path.join(work, "input.rec")
+    env = dict(GBARECOMP_TEST_VIRTUAL_PAD=cmdfile, GBARECOMP_FORCE_REFRESH_HZ="144",
+               GBARECOMP_INPUT_RECORD=record)
+    xs = Xserver(1600, 1000)
+    game = None
+    rate_re = r"EMU ([0-9.]+) \| PRESENT ([0-9.]+) fps"
+
+    def mode_changes(g):
+        return sum(1 for l in g.lines if "host_window: fullscreen-borderless display" in l
+                   or "host_window: windowed display" in l)
+
+    try:
+        game = Game(exe, args.config, args.rom, args.bios, xs.name, work, extra_env=env)
+        win = xs.game_window()
+        xs.park()
+        game.wait_ready()
+        pad = VirtualPad(cmdfile)
+        check(game.wait_log("virtual test pad attached"), "test controller attached to the host")
+        menu = Menu(xs, game, win)
+
+        # ---- Alt+Enter -------------------------------------------------------------------
+        print("   -- Alt+Enter")
+        check_wait(lambda: (win.get_geometry().width == 720, win.get_geometry().width), "starts as a 3x window", timeout=5.0)
+        n0 = mode_changes(game)
+        xs.combo(["Alt_L"], "Return")
+        check_wait(lambda: (game.last_layout() == (50, 0, 1500, 1000), f"layout {game.last_layout()}"),
+                   "Alt+Enter enters Borderless fullscreen (3:2 letterboxed in 1600x1000)", timeout=10.0)
+        check_wait(lambda: ("window_mode = borderless" in read_ini(ini), read_ini(ini)[-250:]),
+                   "Alt+Enter persists window_mode = borderless", timeout=5.0)
+        xs.combo(["Alt_L"], "Return")
+        check_wait(lambda: (game.last_layout() is not None and game.last_layout()[2:] == (720, 480),
+                            f"layout {game.last_layout()}"),
+                   "Alt+Enter returns to the 720x480 window", timeout=10.0)
+        check_wait(lambda: ("window_mode = windowed" in read_ini(ini), read_ini(ini)[-250:]),
+                   "Alt+Enter persists window_mode = windowed", timeout=5.0)
+        check(mode_changes(game) - n0 == 2, f"two Alt+Enter presses made exactly two mode changes ({mode_changes(game) - n0})")
+        n1 = mode_changes(game)
+        xs.combo(["Alt_L"], "Return", hold=1.4)      # held: the X server auto-repeats the key
+        check_wait(lambda: (game.last_layout() == (50, 0, 1500, 1000), f"layout {game.last_layout()}"),
+                   "a held Alt+Enter toggles to Borderless", timeout=10.0)
+        time.sleep(0.8)
+        check(mode_changes(game) - n1 == 1,
+              f"key auto-repeat did not re-trigger the toggle (one mode change, got {mode_changes(game) - n1})")
+        # with the menu open: still toggles, never doubles as "accept", the menu stays open
+        menu.open()
+        n2 = mode_changes(game)
+        xs.combo(["Alt_L"], "Return")
+        check_wait(lambda: (game.last_layout() is not None and game.last_layout()[2:] == (720, 480),
+                            f"layout {game.last_layout()}"),
+                   "Alt+Enter works with the menu open", timeout=10.0)
+        check(mode_changes(game) - n2 == 1, "exactly one mode change with the menu open")
+        check(game.frozen(0.4), "the menu is still open (guest held) after Alt+Enter")
+        menu.close()
+        check(game.alive(), "host alive after the Alt+Enter sequence")
+
+        # ---- controller: menu navigation -------------------------------------------------
+        print("   -- controller navigation")
+        pad.tap("guide")
+        check_wait(lambda: (game.frozen(0.25), "guest still advancing"), "Guide opens the menu (guest held)", timeout=5.0)
+        pad.tap("down")                              # section list: Display -> Graphics
+        pad.tap("a")                                 # enter Graphics (row 0: Integer scaling)
+        pad.stick_tap("ly", 30000)                   # left stick down: row 1 (Linear filter)
+        pad.tap("a")                                 # toggle Linear
+        check_wait(lambda: ("filtering = linear" in read_ini(ini), read_ini(ini)[-250:]),
+                   "D-pad + stick + A reached and toggled 'Linear filter' (one row per tap)", timeout=5.0)
+        # a stick HELD for 300 ms (about 18 polls) must move exactly one row, not scroll
+        pad.stick("ly", 30000)
+        time.sleep(0.3)
+        pad.stick("ly", 0)
+        time.sleep(0.25)
+        pad.tap("a")                                 # row 2: CRT  (Off -> Lite)
+        check_wait(lambda: ("crt_enabled = 1" in read_ini(ini) and "crt_preset = lite" in read_ini(ini),
+                            read_ini(ini)[-250:]),
+                   "a held stick moved exactly one row (debounced): the next A hit 'CRT' (Off -> Lite)", timeout=5.0)
+        pad.tap("a")                                 # Lite -> Soft
+        check_wait(lambda: ("crt_preset = soft" in read_ini(ini), read_ini(ini)[-250:]),
+                   "A cycles the CRT preset (Soft)", timeout=5.0)
+        pad.tap("right")                             # Soft -> Strong
+        check_wait(lambda: ("crt_preset = strong" in read_ini(ini), read_ini(ini)[-250:]),
+                   "D-pad right adjusts the choice (Strong)", timeout=5.0)
+        pad.tap("left")                              # Strong -> Soft again
+        check_wait(lambda: ("crt_preset = soft" in read_ini(ini), read_ini(ini)[-250:]),
+                   "D-pad left adjusts the choice back (Soft)", timeout=5.0)
+        pad.tap("b")                                 # back out of the section
+        check(game.frozen(0.3), "B backs out of a section without closing the menu")
+        pad.tap("b")                                 # close
+        check_wait(lambda: (not game.frozen(0.25), "guest still held"), "B closes the menu", timeout=5.0)
+        pad.tap("guide")
+        check_wait(lambda: (game.frozen(0.25), "guest running"), "Guide opens the menu again", timeout=5.0)
+        pad.tap("start")
+        check_wait(lambda: (not game.frozen(0.25), "guest still held"), "Start resumes (closes the menu)", timeout=5.0)
+
+        # ---- input ownership -------------------------------------------------------------
+        print("   -- guest input ownership")
+        RELEASED = 0x03FF
+        f_mark = game.frame()
+        pad.tap("a", hold=0.3)                       # menu closed: the guest must see A
+        ok, rows = wait_until(lambda: (any(f >= f_mark and not (k & 1) for f, k in read_record(record)),
+                                       read_record(record)[-4:]), "A reaches the guest", timeout=5.0)
+        check(ok, "menu closed: controller A reaches the guest")
+        pad.tap("guide")
+        check_wait(lambda: (game.frozen(0.25), "guest running"), "menu open for the ownership test", timeout=5.0)
+        n_rows = len(read_record(record))
+        for name in ("a", "b", "up", "down", "left", "right", "x", "y", "lb", "rb", "back"):
+            pad.tap(name, hold=0.1, gap=0.1)
+        pad.stick_tap("lx", 30000)
+        pad.stick_tap("ly", -30000)
+        time.sleep(0.4)
+        # While open the recorded KEYINPUT may only be "all released" (it can add at most the one
+        # transition row to RELEASED when the menu opened over a held button).
+        new_rows = read_record(record)[n_rows:]
+        check(all(k == RELEASED for _, k in new_rows),
+              f"menu open: the guest saw no controller input ({len(new_rows)} new rows: {new_rows[:4]})")
+        # Close with B while keeping B held: the guest must not see B until it is released.
+        pad.tap("guide")                             # close via Guide so section state is predictable
+        check_wait(lambda: (not game.frozen(0.25), "guest still held"), "menu closed for the latch test", timeout=5.0)
+        pad.tap("guide")
+        check_wait(lambda: (game.frozen(0.25), "guest running"), "menu re-opened for the latch test", timeout=5.0)
+        pad.down("b")                                # B: top level of the menu closes it
+        check_wait(lambda: (not game.frozen(0.25), "guest still held"), "B (held) closed the menu", timeout=5.0)
+        f_close = game.frame()
+        time.sleep(0.6)                              # B still physically down, menu closed
+        held_rows = [(f, k) for f, k in read_record(record) if f >= f_close and not (k & 2)]
+        check(not held_rows, f"a button held across the menu close is masked from the guest ({held_rows[:3]})")
+        pad.up("b")
+        time.sleep(0.3)
+        f_after = game.frame()
+        pad.tap("b", hold=0.3)
+        ok, _ = wait_until(lambda: (any(f >= f_after and not (k & 2) for f, k in read_record(record)),
+                                    read_record(record)[-4:]), "B reaches the guest again", timeout=5.0)
+        check(ok, "after releasing, a new B press reaches the guest again")
+        # Start resumes the menu; the Start still held after that must not pause/start the game.
+        pad.tap("guide")
+        check_wait(lambda: (game.frozen(0.25), "guest running"), "menu open for the Start test", timeout=5.0)
+        pad.down("start")
+        check_wait(lambda: (not game.frozen(0.25), "guest still held"), "Start (held) resumed the game", timeout=5.0)
+        f_start = game.frame()
+        time.sleep(0.6)
+        start_rows = [(f, k) for f, k in read_record(record) if f >= f_start and not (k & 8)]
+        check(not start_rows, f"the Start that resumed the menu does not reach the guest ({start_rows[:3]})")
+        pad.up("start")
+        time.sleep(0.3)
+        game.stop()
+        game = Game(exe, args.config, args.rom, args.bios, xs.name, work, extra_env=env)
+        win = xs.game_window()
+        game.wait_ready()
+        menu = Menu(xs, game, win)       # a fresh process: the shared menu starts on its first section
+
+        # ---- Presentation Refresh (forced 144 Hz: synthetic) -----------------------------
+        print("   -- Presentation Refresh (forced 144 Hz)")
+        menu.activate("Performance", PERFORMANCE["Show FPS"])
+        def steady(lo_p, hi_p):
+            def probe():
+                mm = re.search(rate_re, str(win.get_wm_name()))
+                if not mm:
+                    return False, f"no EMU/PRESENT in title: {win.get_wm_name()!r}"
+                e, pr = float(mm.group(1)), float(mm.group(2))
+                return (55.0 <= e <= 64.0 and lo_p <= pr <= hi_p), f"EMU={e} PRESENT={pr}"
+            return probe
+        check_wait(steady(55.0, 64.0), "Native: PRESENT follows the guest (one present per guest frame)",
+                   timeout=15.0, interval=0.25)
+        menu.activate("Performance", PERFORMANCE["Presentation Refresh"], key="Right")
+        check_wait(lambda: ("presentation = monitor" in read_ini(ini), read_ini(ini)[-300:]),
+                   "Presentation Refresh = Monitor persists", timeout=5.0)
+        check_wait(steady(100.0, 170.0), "Monitor Refresh (forced 144 Hz): PRESENT ~144 while EMU stays ~59.7",
+                   timeout=15.0, interval=0.25)
+        print("        title:", win.get_wm_name())
+        f0, t0 = game.frame(), time.time()
+        time.sleep(4.0)
+        f1, t1 = game.frame(), time.time()
+        guest_hz = (f1 - f0) / (t1 - t0)
+        check(58.5 <= guest_hz <= 60.9, f"guest frame counter still advances at ~59.7 Hz ({guest_hz:.2f})")
+        # held guest (menu open): EMU 0, PRESENT keeps going at the monitor rate, state does not move
+        menu.open()
+        def held_rates():
+            mm = re.search(rate_re, str(win.get_wm_name()))
+            if not mm:
+                return False, str(win.get_wm_name())
+            e, pr = float(mm.group(1)), float(mm.group(2))
+            return (e < 2.0 and pr > 100.0), f"EMU={e} PRESENT={pr}"
+        check_wait(held_rates, "menu open (Monitor Refresh): EMU 0, PRESENT continues at the monitor rate", timeout=10.0)
+        h0 = observe(game, "state_hash")
+        shot_a = xs.grab(win)
+        time.sleep(1.2)
+        h1 = observe(game, "state_hash")
+        shot_b = xs.grab(win)
+        if h0 and h0.get("ok") and h1 and h1.get("ok"):
+            keys = ("cycles", "iwram", "ewram", "vram", "pal", "oam")
+            check(all(h0.get(k) == h1.get(k) for k in keys),
+                  "machine state hash (cycles, IWRAM/EWRAM/VRAM/PAL/OAM) identical across repeated presents")
+        else:
+            check(False, f"state_hash unavailable on the observe port ({h0})")
+        check(ImageChops.difference(shot_a, shot_b).getbbox() is None,
+              "repeated presents show the identical picture (no interpolation, no blending)")
+        # the presentation setting is still selectable while held and Native restores 1:1
+        menu.close()
+        menu.activate("Performance", PERFORMANCE["Presentation Refresh"], key="Left")
+        check_wait(steady(55.0, 64.0), "back to Native: PRESENT returns to the guest rate", timeout=15.0, interval=0.25)
+        menu.activate("Performance", PERFORMANCE["Presentation Refresh"], key="Right")
+        check_wait(steady(100.0, 170.0), "Monitor Refresh selected again for the restart check", timeout=15.0, interval=0.25)
+        game.stop()
+
+        game = Game(exe, args.config, args.rom, args.bios, xs.name, work, extra_env=env)
+        win = xs.game_window()
+        game.wait_ready()
+        check_wait(steady(100.0, 170.0), "Monitor Refresh survives a restart (PRESENT ~144, EMU ~59.7)",
+                   timeout=20.0, interval=0.25)
+        check(game.alive(), "session alive with Monitor Refresh + controller + CRT presets")
+        game.stop()
+
+        # a config from before ENHANCEMENTS-2: no presentation key, hand-tuned lite -> Custom
+        with open(ini, "w") as f:
+            f.write("[Display]\nwindow_scale = 3\ncrt_enabled = 1\ncrt_preset = lite\nscanline_strength = 65\n")
+        game = Game(exe, args.config, args.rom, args.bios, xs.name, work, extra_env=env, observe=False)
+        win = xs.game_window()
+        check(game.wait_log("host_window: presentation", timeout=60.0), "an ENHANCEMENTS-1 config loads and presents")
+        time.sleep(1.0)
+        menu = Menu(xs, None, win)
+        menu.activate("Performance", PERFORMANCE["Show FPS"])
+        check_wait(lambda: ("presentation = native" in read_ini(ini) and "scanline_strength = 65" in read_ini(ini)
+                            and "crt_preset = custom" in read_ini(ini), read_ini(ini)[-300:]),
+                   "old config migrates: presentation defaults to native, the tuned strength stays as Custom",
+                   timeout=8.0)
+        game.proc.terminate()
+        log = game.finish(60)
+        check(game.proc.returncode == 0, f"clean exit status ({game.proc.returncode})")
+        check("self_heal_coverage=FULLY_STATIC" in log, "strict-static: FULLY_STATIC")
+        for key in ("dispatch_misses=0", "interpreted_insns=0", "unmapped=0", "io_unhandled=0"):
+            check(key in log, f"strict-static: {key}")
+    except Exception:
+        if game:
+            print("---- game log ----\n" + game.log()[-4000:])
+        raise
+    finally:
+        if game and game.alive():
+            game.proc.kill()
+        xs.stop()
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("binary")
@@ -759,7 +1091,7 @@ def main():
         again = xs.settled(win, same_as_off, "Linear off restores the default pixels")
         check(same_as_off(again), "turning Linear off restores the exact default pixels")
 
-        menu.activate("Graphics", GRAPHICS["CRT Lite"])
+        menu.activate("Graphics", GRAPHICS["CRT"])          # Off -> Lite
         crt_ok = lambda im: im.size == off.size and (lambda pr: min(pr[0]) < 0.93 and max(pr[0]) > 0.97)(
             row_ratio_profile(off, im, scale))
         crt = xs.settled(win, crt_ok, "CRT Lite scanlines applied")
@@ -772,7 +1104,31 @@ def main():
             off.save(os.path.join(args.shots, "nearest.png"))
             lin.save(os.path.join(args.shots, "linear.png"))
             crt.save(os.path.join(args.shots, "crt-lite.png"))
-        menu.activate("Graphics", GRAPHICS["CRT Lite"])
+        # ENHANCEMENTS-2: the CRT item is a preset choice (Off, Lite, Soft, Strong, Custom). Each
+        # preset must be a distinct, conservative look and persist by name.
+        check_wait(lambda: ("crt_preset = lite" in read_ini(ini), read_ini(ini)[-200:]),
+                   "CRT Lite persists as crt_preset = lite", timeout=5.0)
+        mins = {"lite": min(prof)}
+        for name in ("soft", "strong"):
+            menu.activate("Graphics", GRAPHICS["CRT"])
+            cur = xs.settled(win, lambda im: im.size == off.size and ImageChops.difference(off, im).getbbox() is not None,
+                             f"CRT {name} applied")
+            pr, br = row_ratio_profile(off, cur, scale)
+            mins[name] = min(pr)
+            print(f"        CRT {name}: per-row ratio " + ", ".join(f"{v:.3f}" for v in pr))
+            check(br == 0, f"CRT {name} never brightens a pixel")
+            check(min(pr) > 0.6, f"CRT {name} stays readable (no row darker than 60%)")
+            check_wait(lambda: (f"crt_preset = {name}" in read_ini(ini), read_ini(ini)[-200:]),
+                       f"CRT {name} persists as crt_preset = {name}", timeout=5.0)
+            if args.shots:
+                cur.save(os.path.join(args.shots, f"crt-{name}.png"))
+        check(mins["soft"] > mins["lite"] > mins["strong"],
+              f"presets are ordered Soft < Lite < Strong in darkness ({mins['soft']:.3f} > {mins['lite']:.3f} > {mins['strong']:.3f})")
+        menu.activate("Graphics", GRAPHICS["CRT"])          # Strong -> Custom (keeps the strength)
+        check_wait(lambda: ("crt_preset = custom" in read_ini(ini) and "scanline_strength = 70" in read_ini(ini),
+                            read_ini(ini)[-200:]),
+                   "CRT Custom keeps the strength of the preset it came from", timeout=5.0)
+        menu.activate("Graphics", GRAPHICS["CRT"])          # Custom -> Off
         check(same_as_off(xs.settled(win, same_as_off, "CRT off restores the default pixels")),
               "CRT Off restores the exact default pixels")
         menu.activate("Graphics", GRAPHICS["Color correction"])
@@ -851,7 +1207,7 @@ def main():
 
         print("== E: persistence, invalid values, restore defaults")
         menu.activate("Graphics", GRAPHICS["Integer scaling"])
-        menu.activate("Graphics", GRAPHICS["CRT Lite"])
+        menu.activate("Graphics", GRAPHICS["CRT"])           # Off -> Lite
         menu.activate("Graphics", GRAPHICS["Scanline strength"], presses=2, key="Right")
         menu.activate("Performance", PERFORMANCE["Show FPS"])
         check_wait(lambda: (all(k in read_ini(ini) for k in ("scale_mode = integer", "crt_enabled = 1", "show_fps = 1")),
@@ -859,6 +1215,8 @@ def main():
                    "choices are written to config.ini [Display]", timeout=5.0)
         check_wait(lambda: ("scanline_strength = 50" in read_ini(ini), read_ini(ini)[-300:]),
                    "scanline strength steps by 5% and persists (40 -> 50)", timeout=5.0)
+        check_wait(lambda: ("crt_preset = custom" in read_ini(ini), read_ini(ini)[-300:]),
+                   "moving the slider switches the preset to Custom (no contradictory UI)", timeout=5.0)
 
         # ESC must also close the menu with the pointer resting on a menu row. This is the only
         # step that hovers the menu on purpose (hover moves the selection, so it runs last in the
@@ -900,7 +1258,8 @@ def main():
         def restored():
             t = read_ini(ini)
             return ("filtering = nearest" in t and "scanline_strength = 40" in t
-                    and "scale_mode = fit" in t and "crt_enabled = 0" in t), t[-300:]
+                    and "scale_mode = fit" in t and "crt_enabled = 0" in t
+                    and "crt_preset = lite" in t and "presentation = native" in t), t[-300:]
         check_wait(restored, "Restore display defaults resets and persists every option", timeout=5.0)
         text = read_ini(ini)
         check("[KeyMap]" in text and "Pause = Shift+P" in text,
@@ -939,6 +1298,7 @@ def main():
         shutil.rmtree(work, ignore_errors=True)
 
     scale_presets_resume_borderless(args)
+    enhancements_2(args)
 
     if FAILURES:
         print(f"\n{len(FAILURES)} check(s) failed")

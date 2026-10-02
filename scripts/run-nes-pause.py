@@ -99,7 +99,8 @@ def main():
     try:
         print("== 2: shipped host resumes inside the NES")
         game = hd.Game(exe, args.config, args.rom, args.bios, xs.name, work,
-                       extra_args=["--load-state", state])
+                       extra_args=["--load-state", state],
+                       extra_env={"GBARECOMP_FORCE_REFRESH_HZ": "144"})
         win = xs.game_window()
         xs.park()                      # the host's real pointer must not hover the menu (see run-host-display.py)
         game.wait_ready()
@@ -181,7 +182,10 @@ def main():
         print("== 5b: display options changed from the ESC menu inside the NES")
         base_img = xs.grab(win)
         for label, section, row in (("Linear filter", "Graphics", hd.GRAPHICS["Linear filter"]),
-                                    ("CRT Lite", "Graphics", hd.GRAPHICS["CRT Lite"]),
+                                    ("CRT Lite", "Graphics", hd.GRAPHICS["CRT"]),
+                                    ("CRT Soft", "Graphics", hd.GRAPHICS["CRT"]),
+                                    ("Presentation Refresh = Monitor (forced 144 Hz, synthetic)", "Performance",
+                                     hd.PERFORMANCE["Presentation Refresh"]),
                                     ("Integer scaling", "Graphics", hd.GRAPHICS["Integer scaling"])):
             a, b = menu.activate(section, row, around=lambda: observe(game, "state_hash"))
             check(a is not None and a == b, f"{label}: guest machine untouched while paused in the menu")
@@ -193,7 +197,7 @@ def main():
             check(game.alive(), f"{label}: host alive")
         styled = xs.grab(win)
         check(hd.ImageChops.difference(base_img, styled).getbbox() is not None,
-              "filter + CRT Lite + integer scaling change the presented picture")
+              "filter + CRT presets + presentation + integer scaling change the presented picture")
         menu.activate("Display", hd.DISPLAY["Restore display defaults"])
         time.sleep(1.0)
         check(hd.nonblack(xs.grab(win)) > 2000, "NES picture still on screen after restoring defaults")

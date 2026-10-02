@@ -107,7 +107,9 @@ void test_roundtrip_and_ini() {
     a.vsync = true;
     a.show_fps = true;
     a.crt_enabled = true;
+    a.crt_preset = CrtPreset::Custom;   // 65 is not a preset's strength (ENHANCEMENTS-2)
     a.scanline_strength = 65;
+    a.presentation = PresentationMode::MonitorRefresh;
     a.color_profile = ColorProfile::GbaLike;
     DisplaySettings b;
     int rejected = -1;
@@ -167,6 +169,7 @@ void test_persistence_text() {
 
     // A changed value replaces, does not append.
     DisplaySettings t = s;
+    t.crt_preset = CrtPreset::Custom;   // a hand-set strength is a Custom look
     t.scanline_strength = 10;
     const std::string third = ini_replace_section(twice, "Display", display_settings_to_ini(t));
     DisplaySettings back;
