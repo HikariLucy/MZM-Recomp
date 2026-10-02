@@ -38,6 +38,10 @@ cfg, state = os.path.join(base, "cfg"), os.path.join(base, "state")
 print("work dir:", base)
 
 xs = hd.Xserver(1280, 800)
+# The nested server inherits the desktop's (possibly multi-group) keymap; pin it to plain US so
+# the characters typed into the launcher are the ones intended.
+subprocess.run(["setxkbmap", "-display", xs.name, "-layout", "us", "-variant", ""], check=False)
+time.sleep(0.5)
 port = hd.free_port()
 env = dict(os.environ, DISPLAY=xs.name, HOME=home, XDG_CONFIG_HOME=cfg, XDG_STATE_HOME=state,
            SDL_AUDIODRIVER="dummy", GBARECOMP_AUDIO_PROBE="1")
@@ -77,22 +81,18 @@ def type_text(s):
         ks = XK.string_to_keysym(KEYS.get(ch, ch))
         found = None
         for kc in range(d.display.info.min_keycode, d.display.info.max_keycode + 1):
-            for idx in (0, 1, 2, 3):
+            for idx in (0, 1):
                 if d.keycode_to_keysym(kc, idx) == ks:
                     found = (kc, idx); break
             if found: break
         assert found, f"no key produces {ch!r}"
         kc, idx = found
         mod = None
-        if idx in (1, 3): mod = d.keysym_to_keycode(XK.string_to_keysym("Shift_L"))
+        if idx == 1: mod = d.keysym_to_keycode(XK.string_to_keysym("Shift_L"))
         xs.ensure_focus()
-        if idx >= 2: 
-            l3 = d.keysym_to_keycode(XK.string_to_keysym("ISO_Level3_Shift"))
-            xs._fake(X.KeyPress, l3)
         if mod: xs._fake(X.KeyPress, mod)
         xs._fake(X.KeyPress, kc); time.sleep(0.02); xs._fake(X.KeyRelease, kc)
         if mod: xs._fake(X.KeyRelease, mod)
-        if idx >= 2: xs._fake(X.KeyRelease, l3)
         time.sleep(0.04)
 
 def has_color(im, box, pred):
@@ -119,12 +119,20 @@ if w: check("Beta 3" in str(w.get_wm_name()), f"window title is {w.get_wm_name()
 xs.focus_win = w; w.set_input_focus(X.RevertToParent, X.CurrentTime)
 time.sleep(1.5)
 shot("01-setup.png")
-xs.click(550, 358); type_text(os.path.join(games, "mzm.gba"))
-xs.click(550, 502); type_text(os.path.join(games, "bios.bin"))
-time.sleep(0.6); shot("02-filled.png")
-im = pixels()
-# status lines are green when "Valid"
-green = lambda p: p[1] > 150 and p[0] < 120 and p[2] < 160
+def click_field(x, y):
+    """The nested server shares the desktop pointer: retry until the click lands where aimed."""
+    for _ in range(20):
+        if xs.click(x, y): return True
+        time.sleep(0.2)
+    return False
+green = lambda p: p[1] > 150 and p[0] < 120 and p[2] < 160      # status lines are green when "Valid"
+for attempt in range(3):
+    for (x, y, path) in ((550, 358, "mzm.gba"), (550, 502, "bios.bin")):
+        click_field(x, y); xs.combo(["Control_L"], "a"); type_text(os.path.join(games, path))
+    time.sleep(0.8); im = pixels()
+    if has_color(im, (220, 385, 400, 405), green) and has_color(im, (220, 530, 400, 550), green): break
+    print(f"  note  launcher fields were not valid after attempt {attempt + 1}; retrying")
+shot("02-filled.png")
 check(has_color(im, (220, 385, 400, 405), green), "ROM shows Valid")
 check(has_color(im, (220, 530, 400, 550), green), "BIOS shows Valid")
 xs.click(438, 645); time.sleep(1.0); shot("03-home.png")
