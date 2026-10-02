@@ -10,8 +10,22 @@
 #include <processthreadsapi.h>
 #include <synchapi.h>
 #include <malloc.h>
+#include <intrin.h>
 
 #if defined(__cplusplus)
+#if defined(_MSC_VER)
+static inline int __builtin_clz(unsigned int x) {
+    unsigned long index;
+    if (_BitScanReverse(&index, (unsigned long)x)) {
+        return 31 - (int)index;
+    }
+    return 32;
+}
+static inline int __builtin_popcount(unsigned int x) {
+    return (int)__popcnt(x);
+}
+#endif
+
 #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
 #ifndef CreateFileW
