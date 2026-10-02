@@ -1,5 +1,9 @@
 # MZM Recompiled — Enhancements (ENHANCEMENTS-1)
 
+> **ENHANCEMENTS-2** (Presentation Refresh, Alt+Enter, controller navigation, CRT Soft/Strong/Custom)
+> is documented in `docs/ENHANCEMENTS-2.md`. Where that document and the "Planned" / "120 / 144 Hz" /
+> "no gamepad navigation, no Alt+Enter" notes below disagree, ENHANCEMENTS-2 is current.
+
 > **Integration note (RC-INTEGRATION-PRECHECK-1):** on branch `feat/rc-integration-precheck` the framework and
 > generator pin is `2acbc2b` (this document's `bc65c55` / `0b9d032` figures are the standalone
 > ENHANCEMENTS-1 evidence). See `docs/RC-INTEGRATION-PRECHECK.md`.
@@ -152,7 +156,7 @@ high-refresh hardware. It is therefore left as ENHANCEMENTS-2 work behind a
 "Presentation: Native / Monitor Refresh" option. The guest, VBlank, timers and audio clock
 must stay on the 59.7275 Hz emulation clock in every case.
 
-## Planned (ENHANCEMENTS-2)
+## Planned (ENHANCEMENTS-2: done except interpolation and a measured colour profile)
 
 * Presentation refresh option (above) with a hardware pacing qualification.
 * Frame interpolation (experimental; needs motion vectors or a two-frame blend with an
