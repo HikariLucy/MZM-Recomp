@@ -21,6 +21,7 @@ jobs:
           repository: HikariLucy/gbarecomp
           ref: 266f82f556fe995ece1bfc558cfe59496b0ef31c
           path: gbarecomp
+          submodules: recursive
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
