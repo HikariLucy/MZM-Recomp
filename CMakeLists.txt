@@ -118,7 +118,7 @@ list(FILTER GAME_RECOMPILED_SOURCES INCLUDE REGEX
     "/recompiled_[0-9]+\\.cpp$")
 if(GAME_RECOMPILED_SOURCES)
     if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-        set(_mzm_guest_options /O1)
+        set(_mzm_guest_options /O1 /bigobj)
     else()
         set(_mzm_guest_options -O1 -g0)
     endif()
@@ -153,6 +153,12 @@ if(WIN32 AND NOT MZM_PLATFORM_UWP)
         "${CMAKE_CURRENT_BINARY_DIR}/mzm-recompiled.rc" @ONLY)
     target_sources(MZMRecomp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/mzm-recompiled.rc")
     gbarecomp_target_link_host_stack(MZMRecomp PRIVATE)
+endif()
+
+if(MZM_PLATFORM_UWP)
+    target_sources(MZMRecomp PRIVATE src/platform/uwp/SDL_winrt_main_NonXAML.cpp)
+    set_source_files_properties(src/platform/uwp/SDL_winrt_main_NonXAML.cpp PROPERTIES
+        COMPILE_OPTIONS "/ZW")
 endif()
 
 execute_process(COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse HEAD
@@ -470,9 +476,31 @@ if(MZM_RECOMP_UI)
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
         )
 
-        recomp_target_launcher_ui(mzm_launcher_ui
-            CONSOLE gba
-        )
+        if(MZM_PLATFORM_UWP)
+            target_sources(mzm_launcher_ui PRIVATE
+                "${RECOMP_UI_ROOT}/src/third_party/imgui/imgui.cpp"
+                "${RECOMP_UI_ROOT}/src/third_party/imgui/imgui_draw.cpp"
+                "${RECOMP_UI_ROOT}/src/third_party/imgui/imgui_tables.cpp"
+                "${RECOMP_UI_ROOT}/src/third_party/imgui/imgui_widgets.cpp"
+                "${RECOMP_UI_ROOT}/src/third_party/imgui/backends/imgui_impl_sdl2.cpp"
+                "${RECOMP_UI_ROOT}/src/third_party/imgui/backends/imgui_impl_sdlrenderer2.cpp"
+            )
+            target_compile_definitions(mzm_launcher_ui PRIVATE
+                RECOMP_LAUNCHER
+                MZM_PLATFORM_UWP=1
+            )
+            add_custom_command(TARGET MZMRecomp POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "$<TARGET_FILE_DIR:MZMRecomp>/assets/fonts"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                        "${RECOMP_UI_ROOT}/assets/fonts"
+                        "$<TARGET_FILE_DIR:MZMRecomp>/assets/fonts"
+                VERBATIM)
+        else()
+            recomp_target_launcher_ui(mzm_launcher_ui
+                CONSOLE gba
+            )
+        endif()
         target_compile_definitions(mzm_launcher_ui PRIVATE
             MZM_VERSION="${PROJECT_VERSION}"
             MZM_BUILD_SHA="${MZM_GIT_SHA}"
@@ -493,7 +521,22 @@ if(MZM_RECOMP_UI)
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-recompiled.bmp"
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-brand-helm-core.png")
 
-        find_package(SDL2 REQUIRED)
+        if(NOT TARGET SDL2::SDL2)
+            find_package(SDL2 QUIET)
+        endif()
+        if(NOT TARGET SDL2::SDL2)
+            find_path(SDL2_INCLUDE_DIR NAMES SDL.h PATH_SUFFIXES SDL2 include/SDL2 include)
+            find_library(SDL2_LIBRARY NAMES SDL2 SDL2-static)
+            if(SDL2_INCLUDE_DIR AND SDL2_LIBRARY)
+                add_library(SDL2::SDL2 UNKNOWN IMPORTED)
+                set_target_properties(SDL2::SDL2 PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${SDL2_INCLUDE_DIR}"
+                    IMPORTED_LOCATION "${SDL2_LIBRARY}"
+                )
+            else()
+                message(FATAL_ERROR "SDL2 not found. Set -DSDL2_DIR or -DSDL2_INCLUDE_DIR and -DSDL2_LIBRARY")
+            endif()
+        endif()
         target_link_libraries(mzm_launcher_ui PUBLIC SDL2::SDL2)
         if(WIN32 AND NOT MZM_PLATFORM_UWP)
             target_link_libraries(mzm_launcher_ui PUBLIC opengl32 shell32)

@@ -4,14 +4,44 @@
 #include "mzm_log.h"
 #include "mzm_support.h"
 #include "mzm_diagnostics.h"
+#if defined(MZM_PLATFORM_UWP)
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_sdlrenderer2.h"
+#include <SDL.h>
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include "third_party/stb_image.h"
+
+struct UwpTexture {
+    SDL_Texture* id = nullptr;
+    int w = 0, h = 0;
+};
+
+static UwpTexture uwp_load_texture(SDL_Renderer* renderer, const char* path) {
+    UwpTexture t;
+    int comp = 0;
+    unsigned char* pixels = stbi_load(path, &t.w, &t.h, &comp, 4);
+    if (!pixels) return t;
+    SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(pixels, t.w, t.h, 32, t.w * 4, SDL_PIXELFORMAT_RGBA32);
+    if (surf) {
+        t.id = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_FreeSurface(surf);
+    }
+    stbi_image_free(pixels);
+    return t;
+}
+#else
 #include "launcher_files.h"
 #include "launcher_gl.h"
-#include "windows_executable_path.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
 #include <SDL.h>
 #include <SDL_opengl.h>
+#endif
+#include "windows_executable_path.h"
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -33,9 +63,19 @@ void copy_path(PathBuffer& dst, const std::string& value) {
     std::snprintf(dst.data(), dst.size(), "%s", value.c_str());
 }
 void pick(const char* title, const char* const* patterns, PathBuffer& path) {
+#if defined(MZM_PLATFORM_UWP)
+    (void)patterns;
+    auto discovered = mzm::discover_local_assets();
+    if (std::strstr(title, "ROM") && !discovered.rom.empty()) {
+        copy_path(path, discovered.rom);
+    } else if (std::strstr(title, "BIOS") && !discovered.bios.empty()) {
+        copy_path(path, discovered.bios);
+    }
+#else
     char selected[4096] = {};
     if (launcher_try_pick_file(title, patterns, 1, title, selected, sizeof(selected)) == 1)
         copy_path(path, selected);
+#endif
 }
 void heading(const char* title, const char* subtitle, ImFont* bold) {
     if (bold) ImGui::PushFont(bold);
@@ -63,7 +103,11 @@ void file_row(const char* name, const char* hint, const char* action,
     ImGui::InputText("##path", path.data(), path.size());
     if (ImGui::IsItemHovered() && path[0]) ImGui::SetTooltip("%s", path.data());
     ImGui::SameLine();
+#if defined(MZM_PLATFORM_UWP)
+    if (ImGui::Button("Scan Folder", ImVec2(164, 0))) pick(name, patterns, path);
+#else
     if (ImGui::Button(action, ImVec2(164, 0))) pick(name, patterns, path);
+#endif
     status(name, error, path.data());
     ImGui::PopID();
 }
@@ -156,6 +200,36 @@ int game_launcher_preboot(std::vector<std::string>& args,
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         std::fprintf(stderr, "[mzm-launcher] SDL init failed: %s\n", SDL_GetError()); return 2;
     }
+#if defined(MZM_PLATFORM_UWP)
+    int window_width = 960, window_height = 640;
+    SDL_Window* window = SDL_CreateWindow("MZM Recompiled | " MZM_RELEASE_LABEL,
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height,
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    SDL_Renderer* renderer = window ? SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : nullptr;
+    if (!window || !renderer) {
+        std::fprintf(stderr, "[mzm-launcher] window/renderer failed: %s\n", SDL_GetError());
+        if (renderer) SDL_DestroyRenderer(renderer);
+        if (window) SDL_DestroyWindow(window);
+        SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS); return 2;
+    }
+    IMGUI_CHECKVERSION(); ImGui::CreateContext();
+    ImGui::GetIO().IniFilename = nullptr;
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    mzm::theme::apply();
+    const fs::path fonts = executable.parent_path() / "assets/fonts";
+    ImFont* body = ImGui::GetIO().Fonts->AddFontFromFileTTF(
+        (fonts / "LatoLatin-Regular.ttf").string().c_str(), 17.f);
+    ImFont* bold = ImGui::GetIO().Fonts->AddFontFromFileTTF(
+        (fonts / "LatoLatin-Bold.ttf").string().c_str(), 19.f);
+    if (!body) ImGui::GetIO().Fonts->AddFontDefault();
+    ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
+    ImGui_ImplSDLRenderer2_Init(renderer);
+    const fs::path brand_path = executable.parent_path()
+        / "assets/icons/mzm-brand-helm-core.png";
+    UwpTexture helm = uwp_load_texture(renderer, brand_path.string().c_str());
+    if (!helm.id) std::fprintf(stderr, "[mzm-launcher] brand unavailable: %s\n", brand_path.string().c_str());
+#else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -195,6 +269,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
         / "assets/icons/mzm-brand-helm-core.png";
     LauncherTexture helm = launcher_texture_load(brand_path.string().c_str());
     if (!helm.id) std::fprintf(stderr, "[mzm-launcher] brand unavailable: %s\n", brand_path.string().c_str());
+#endif
     // ---- Support module state. Everything is collected on demand (page open / Refresh),
     // never per frame, and nothing leaves the machine unless the user clicks an action.
     mzm::SystemInfo sysinfo; bool sysinfo_loaded = false;
@@ -240,7 +315,11 @@ int game_launcher_preboot(std::vector<std::string>& args,
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT) running = false;
         }
+#if defined(MZM_PLATFORM_UWP)
+        ImGui_ImplSDLRenderer2_NewFrame(); ImGui_ImplSDL2_NewFrame(); ImGui::NewFrame();
+#else
         ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplSDL2_NewFrame(); ImGui::NewFrame();
+#endif
         const ImVec2 vp = ImGui::GetIO().DisplaySize;
         background(vp);
         const float margin = vp.x < 800 ? 12.f : 26.f;
@@ -474,6 +553,12 @@ int game_launcher_preboot(std::vector<std::string>& args,
         }
         if (!message.empty()) ImGui::TextColored(mzm::theme::warning, "%s", message.c_str());
         ImGui::End(); ImGui::Render();
+#if defined(MZM_PLATFORM_UWP)
+        SDL_SetRenderDrawColor(renderer, 5, 13, 20, 255);
+        SDL_RenderClear(renderer);
+        ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
+        SDL_RenderPresent(renderer);
+#else
         int width, height; SDL_GL_GetDrawableSize(window, &width, &height);
         glViewport(0, 0, width, height); glClearColor(.02f, .05f, .08f, 1);
         glClear(GL_COLOR_BUFFER_BIT); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -494,11 +579,19 @@ int game_launcher_preboot(std::vector<std::string>& args,
             running = false;
         }
         SDL_GL_SwapWindow(window);
+#endif
     }
+#if defined(MZM_PLATFORM_UWP)
+    if (helm.id) SDL_DestroyTexture(helm.id);
+    ImGui_ImplSDLRenderer2_Shutdown(); ImGui_ImplSDL2_Shutdown(); ImGui::DestroyContext();
+    SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window);
+    SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+#else
     launcher_texture_free(&helm);
     ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplSDL2_Shutdown(); ImGui::DestroyContext();
     SDL_GL_DeleteContext(gl); SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+#endif
     if (!play) return 1;
     mzm::log_event("launch_requested rom=USA-BMXE bios=validated");
     const fs::path config = mzm::resolve_game_config(executable);

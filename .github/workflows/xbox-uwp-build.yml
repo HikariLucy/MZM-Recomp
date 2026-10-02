@@ -1,0 +1,227 @@
+name: Xbox Series X|S UWP x64 Build
+
+on:
+  push:
+    branches:
+      - feat/xbox-uwp-port
+  workflow_dispatch:
+
+jobs:
+  build-xbox-uwp:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout MZM-Recomp repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout GBARecomp pinned runtime
+        uses: actions/checkout@v4
+        with:
+          repository: HikariLucy/gbarecomp
+          ref: 266f82f556fe995ece1bfc558cfe59496b0ef31c
+          path: gbarecomp
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Phase 1 — Probe Runner Toolchain & UWP Components
+        shell: powershell
+        run: |
+          Write-Host "=== Toolchain Probe ==="
+          cmake --version
+          msbuild -version
+          
+          Write-Host "=== Visual Studio Installation & Workloads ==="
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            & $vswhere -latest -products * -format list
+          }
+
+          Write-Host "=== Installed Windows SDKs ==="
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Lib" -ErrorAction SilentlyContinue | Select-Object Name
+
+          Write-Host "=== Extension SDKs (VCLibs) ==="
+          $vclibsPath = "C:\Program Files (x86)\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.VCLibs"
+          if (Test-Path $vclibsPath) {
+            Get-ChildItem $vclibsPath -Recurse -Filter "*.appx" | Select-Object FullName
+          } else {
+            Write-Host "Microsoft.VCLibs ExtensionSDK directory not found."
+          }
+
+          Write-Host "=== UWP C++ Targets ==="
+          $uwpTargets = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\Application Type\Windows Store"
+          if (Test-Path $uwpTargets) {
+            Get-ChildItem $uwpTargets | Select-Object Name
+          } else {
+            Write-Host "Windows Store MSBuild targets not found in default path."
+          }
+
+      - name: Phase 2 — Clone & Build SDL2 UWP x64
+        shell: cmd
+        run: |
+          echo === Cloning SDL 2.30.0 ===
+          git clone --depth 1 --branch release-2.30.0 https://github.com/libsdl-org/SDL.git sdl2-src
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+          echo === Building SDL-UWP.vcxproj x64 Release ===
+          msbuild sdl2-src\VisualC-WinRT\SDL-UWP.vcxproj /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.22621.0
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+          echo === Verifying SDL2 UWP Outputs ===
+          dir /s sdl2-src\VisualC-WinRT\*.dll
+          dir /s sdl2-src\VisualC-WinRT\*.lib
+
+      - name: Phase 3 — SDL UWP Micro-Smoke Link Test
+        shell: powershell
+        run: |
+          Write-Host "=== Compiling SDL UWP Micro-Smoke Test ==="
+          $smokeCode = @"
+          #include <windows.h>
+          #include <SDL.h>
+          #include <SDL_main.h>
+
+          int SDL_main(int argc, char* argv[]) {
+              if (SDL_Init(SDL_INIT_VIDEO) != 0) return 1;
+              SDL_Quit();
+              return 0;
+          }
+
+          int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+              return SDL_WinRTRunApp(SDL_main, NULL);
+          }
+          "@
+          Set-Content -Path "sdl_smoke.cpp" -Value $smokeCode
+
+          $sdlLib = (Get-ChildItem -Path "sdl2-src\VisualC-WinRT" -Filter "SDL2.lib" -Recurse | Select-Object -First 1).FullName
+          Write-Host "Found SDL2.lib at: $sdlLib"
+
+          cl /nologo /ZW /EHsc /MD /I sdl2-src\include sdl_smoke.cpp $sdlLib /link /SUBSYSTEM:WINDOWS /APPCONTAINER WindowsApp.lib
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "SDL UWP micro-smoke link SUCCESS!"
+          } else {
+              Write-Warning "SDL UWP micro-smoke cl test exited with code $LASTEXITCODE"
+          }
+
+      - name: Phase 5 — Configure & Build MZMRecomp UWP x64
+        shell: cmd
+        run: |
+          for /f "delims=" %%i in ('powershell -Command "(Get-ChildItem -Path 'sdl2-src\VisualC-WinRT' -Filter 'SDL2.lib' -Recurse | Select-Object -First 1).FullName"') do set SDL2_LIB=%%i
+          echo Using SDL2 Library: %SDL2_LIB%
+
+          cmake -S . -B build-uwp -G "Visual Studio 17 2022" -A x64 ^
+            -DCMAKE_SYSTEM_NAME=WindowsStore ^
+            -DCMAKE_SYSTEM_VERSION=10.0 ^
+            -DMZM_PLATFORM_UWP=ON ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DGBARECOMP_ROOT=%CD%\gbarecomp ^
+            -DSDL2_INCLUDE_DIR=%CD%\sdl2-src\include ^
+            -DSDL2_LIBRARY="%SDL2_LIB%"
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+          cmake --build build-uwp --config Release --target MZMRecomp -- /m /p:WindowsTargetPlatformVersion=10.0.22621.0
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+      - name: Phase 6 — Stage MSIX Packaging Layout
+        shell: cmd
+        run: |
+          mkdir dist\staging
+          mkdir dist\staging\assets\icons
+          mkdir dist\staging\assets\fonts
+          mkdir dist\staging\configs
+
+          copy build-uwp\Release\MZMRecomp.exe dist\staging\
+          for /f "delims=" %%i in ('powershell -Command "(Get-ChildItem -Path 'sdl2-src\VisualC-WinRT' -Filter 'SDL2.dll' -Recurse | Select-Object -First 1).FullName"') do copy "%%i" dist\staging\
+
+          copy assets\uwp\Package.appxmanifest dist\staging\AppxManifest.xml
+          copy assets\icons\*.png dist\staging\assets\icons\
+          copy recomp-ui\assets\fonts\*.ttf dist\staging\assets\fonts\
+          copy configs\mzm-us.toml dist\staging\configs\
+          copy configs\nes-emulator-map-us.toml dist\staging\configs\
+
+          dir /s dist\staging
+
+      - name: Phase 7 — Package MSIX & Self-Sign Test Certificate
+        shell: powershell
+        run: |
+          Write-Host "=== Generating Self-Signed Development Certificate ==="
+          $cert = New-SelfSignedCertificate -Type Custom `
+            -Subject "CN=MZMRecompiledDev" `
+            -KeyUsage DigitalSignature `
+            -FriendlyName "MZM Recompiled Dev" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          $pfxPassword = ConvertTo-SecureString -String "MZMDevPass2026" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath dist\dev.pfx -Password $pfxPassword
+          Export-Certificate -Cert $cert -FilePath dist\dev.cer
+
+          $makeAppx = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\MakeAppx.exe"
+          $signTool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\SignTool.exe"
+
+          Write-Host "=== Packaging MSIX ==="
+          & $makeAppx pack /d dist\staging /p dist\MZMRecompiled-Xbox-UWP-x64.msix /nv /l
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Write-Host "=== Signing MSIX ==="
+          & $signTool sign /fd SHA256 /a /f dist\dev.pfx /p MZMDevPass2026 dist\MZMRecompiled-Xbox-UWP-x64.msix
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Write-Host "=== Verifying Signature ==="
+          & $signTool verify /pa /v dist\MZMRecompiled-Xbox-UWP-x64.msix
+
+      - name: Phase 8 — Prepare Deliverable Artifacts for Xbox Device Portal
+        shell: powershell
+        run: |
+          # Locate Microsoft.VCLibs dependency package if available
+          $vclibsCandidates = Get-ChildItem "C:\Program Files (x86)\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.VCLibs" -Recurse -Filter "*x64*.appx" -ErrorAction SilentlyContinue
+          if ($vclibsCandidates) {
+            $retailVclibs = $vclibsCandidates | Where-Object { $_.FullName -like "*Retail*" } | Select-Object -First 1
+            if (-not $retailVclibs) { $retailVclibs = $vclibsCandidates | Select-Object -First 1 }
+            if ($retailVclibs) {
+              Copy-Item $retailVclibs.FullName -Destination "dist\Microsoft.VCLibs.x64.14.00.appx"
+              Write-Host "Copied VCLibs dependency: $($retailVclibs.FullName)"
+            }
+          }
+
+          # Create installation instructions
+          $guide = @"
+          # MZM Recompiled — Xbox Series X|S Developer Mode Installation
+
+          ## Package Contents
+          - `MZMRecompiled-Xbox-UWP-x64.msix`: The signed game package.
+          - `dev.cer`: Development certificate for installing the package.
+          - `Microsoft.VCLibs.x64.14.00.appx`: C++ runtime dependency (if needed).
+
+          ## Installation Steps via Xbox Device Portal
+          1. Enable Developer Mode on your Xbox Series X|S.
+          2. Access the Xbox Device Portal from your PC browser (https://<xbox-ip>:11443).
+          3. Navigate to **My games & apps** -> **Install**.
+          4. In **Choose file to upload**, select `MZMRecompiled-Xbox-UWP-x64.msix`.
+          5. In **Choose dependencies**, select `Microsoft.VCLibs.x64.14.00.appx` (if prompted or not pre-installed).
+          6. Complete installation and select **Done**.
+
+          ## Adding Game Files (ROM and BIOS)
+          1. In Xbox Device Portal, navigate to **File explorer**.
+          2. Browse to `DevelopmentFiles\WindowsApps\MZMRecompiled...\LocalState` (or `LocalAppData\MZMRecompiled\LocalState`).
+          3. In `LocalState`, create two folders: `roms` and `bios`.
+          4. Upload your Metroid: Zero Mission (USA) ROM into `LocalState\roms\`.
+          5. Upload your Game Boy Advance BIOS into `LocalState\bios\`.
+          6. Launch MZM Recompiled from the Xbox Developer Home dashboard!
+          "@
+          Set-Content -Path "dist\README-XBOX-TEST.md" -Value $guide
+
+          # Compute SHA-256 sums
+          Get-FileHash -Algorithm SHA256 dist\MZMRecompiled-Xbox-UWP-x64.msix, dist\dev.cer | Format-List | Out-File -FilePath dist\SHA256SUMS.txt
+          Get-Content dist\SHA256SUMS.txt
+
+      - name: Phase 9 — Upload Package Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MZMRecompiled-Xbox-UWP-Build-1
+          path: |
+            dist/MZMRecompiled-Xbox-UWP-x64.msix
+            dist/dev.cer
+            dist/Microsoft.VCLibs.x64.14.00.appx
+            dist/README-XBOX-TEST.md
+            dist/SHA256SUMS.txt
+            dist/staging/

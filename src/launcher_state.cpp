@@ -72,6 +72,63 @@ LauncherState LauncherState::load(const fs::path& path) {
     return state;
 }
 
+#if defined(MZM_PLATFORM_UWP)
+#include <SDL.h>
+
+fs::path uwp_local_state_dir() {
+    char* pref = SDL_GetPrefPath(nullptr, "MZMRecompiled");
+    if (pref) {
+        fs::path p(pref);
+        SDL_free(pref);
+        return p;
+    }
+    return fs::current_path();
+}
+
+fs::path user_config_dir() { return uwp_local_state_dir() / "configs"; }
+fs::path user_log_dir() { return uwp_local_state_dir() / "logs"; }
+fs::path user_saves_dir() { return uwp_local_state_dir() / "saves"; }
+fs::path user_roms_dir() { return uwp_local_state_dir() / "roms"; }
+fs::path user_bios_dir() { return uwp_local_state_dir() / "bios"; }
+
+void bootstrap_local_directories() {
+    std::error_code ec;
+    fs::create_directories(user_config_dir(), ec);
+    fs::create_directories(user_log_dir(), ec);
+    fs::create_directories(user_saves_dir(), ec);
+    fs::create_directories(uwp_local_state_dir() / "savestates", ec);
+    fs::create_directories(user_roms_dir(), ec);
+    fs::create_directories(user_bios_dir(), ec);
+}
+
+DiscoveredAssets discover_local_assets() {
+    DiscoveredAssets res;
+    std::error_code ec;
+    const auto rdir = user_roms_dir();
+    if (fs::is_directory(rdir, ec)) {
+        for (const auto& entry : fs::directory_iterator(rdir, ec)) {
+            if (entry.is_regular_file(ec)) {
+                if (validate_game_file(entry.path()).empty()) {
+                    res.rom = entry.path().string();
+                    break;
+                }
+            }
+        }
+    }
+    const auto bdir = user_bios_dir();
+    if (fs::is_directory(bdir, ec)) {
+        for (const auto& entry : fs::directory_iterator(bdir, ec)) {
+            if (entry.is_regular_file(ec)) {
+                if (validate_bios(entry.path()).empty()) {
+                    res.bios = entry.path().string();
+                    break;
+                }
+            }
+        }
+    }
+    return res;
+}
+#else
 fs::path user_config_dir() { return user_base("XDG_CONFIG_HOME", ".config") / "MZMRecompiled"; }
 fs::path user_log_dir() {
 #ifdef _WIN32
@@ -80,6 +137,20 @@ fs::path user_log_dir() {
 #endif
     return user_base("XDG_STATE_HOME", ".local/state") / "MZMRecompiled/logs";
 }
+fs::path user_saves_dir() { return user_config_dir() / "saves"; }
+fs::path user_roms_dir() { return user_config_dir() / "roms"; }
+fs::path user_bios_dir() { return user_config_dir() / "bios"; }
+
+void bootstrap_local_directories() {
+    std::error_code ec;
+    fs::create_directories(user_config_dir(), ec);
+    fs::create_directories(user_log_dir(), ec);
+}
+
+DiscoveredAssets discover_local_assets() {
+    return {};
+}
+#endif
 
 fs::path resolve_game_config(const fs::path& executable) {
     const auto beside = executable.parent_path() / "configs/mzm-us.toml";

@@ -50,7 +50,11 @@ void print_usage() {
 
 }  // namespace
 
+#if defined(MZM_PLATFORM_UWP)
+extern "C" int SDL_main(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--help") == 0 ||
             std::strcmp(argv[i], "-h") == 0) {
@@ -59,6 +63,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    mzm::bootstrap_local_directories();
     mzm::redirect_console_to_log();
 
     // Release builds run strict-static by default: a missing static entry stops with an
@@ -118,7 +123,15 @@ int main(int argc, char** argv) {
         return launcher_result == 1 ? 0 : 1;
     }
 
-#ifdef _WIN32
+#if defined(MZM_PLATFORM_UWP)
+    const auto config_dir = mzm::user_config_dir();
+    std::error_code config_error;
+    std::filesystem::create_directories(config_dir, config_error);
+    const std::string uwp_save = (mzm::user_saves_dir() / "Metroid - Zero Mission (USA).sav").string();
+    opts.launcher_save_path = uwp_save.c_str();
+    args.insert(args.end(), {"--save", uwp_save});
+    args.front() = (config_dir / "MZMRecomp.exe").string();
+#elif defined(_WIN32)
     // GBARecomp resolves input config and sidecar caches relative to argv[0].
     // Point that host convention at the writable user configuration directory.
     const auto config_dir = mzm::user_config_dir();
