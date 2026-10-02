@@ -56,29 +56,6 @@ static inline HANDLE CreateFileA_uwp(
 #define CreateFileA CreateFileA_uwp
 #endif
 
-#ifndef STARTUPINFOA
-typedef struct _STARTUPINFOA {
-    unsigned long cb;
-    char* lpReserved;
-    char* lpDesktop;
-    char* lpTitle;
-    unsigned long dwX;
-    unsigned long dwY;
-    unsigned long dwXSize;
-    unsigned long dwYSize;
-    unsigned long dwXCountChars;
-    unsigned long dwYCountChars;
-    unsigned long dwFillAttribute;
-    unsigned long dwFlags;
-    unsigned short wShowWindow;
-    unsigned short cbReserved2;
-    unsigned char* lpReserved2;
-    void* hStdInput;
-    void* hStdOutput;
-    void* hStdError;
-} STARTUPINFOA, *LPSTARTUPINFOA;
-#endif
-
 #ifndef STARTF_USESTDHANDLES
 #define STARTF_USESTDHANDLES 0x00000100
 #endif
