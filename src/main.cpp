@@ -118,6 +118,26 @@ int main(int argc, char** argv) {
     args.front() = (config_dir / "MZMRecomp.exe").string();
 #endif
 
+    // Startup diagnostics for bug reports. Results only: never file contents or paths.
+    {
+        auto arg_after = [&](const char* flag) -> const char* {
+            for (size_t i = 1; i + 1 < args.size(); ++i)
+                if (args[i] == flag) return args[i + 1].c_str();
+            return nullptr;
+        };
+        const char* rom = arg_after("--rom");
+        const char* bios = arg_after("--bios");
+        mzm::log_event(!rom ? "rom_validation=not_selected"
+                       : mzm::validate_game_file(rom).empty() ? "rom_validation=ok sha1=expected-usa-rev0"
+                                                              : "rom_validation=FAILED");
+        mzm::log_event(!bios ? "bios_validation=not_selected"
+                       : mzm::validate_bios(bios).empty() ? "bios_validation=ok sha1=expected"
+                                                          : "bios_validation=FAILED");
+        const char* strict = std::getenv("GBARECOMP_STRICT_STATIC");
+        mzm::log_event(strict && *strict == '1' ? "strict_static=requested"
+                                                : "strict_static=not_requested");
+    }
+
     std::vector<char*> av;
     av.reserve(args.size());
     for (auto& arg : args) {

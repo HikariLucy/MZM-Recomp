@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MZMRecomp VERSION 0.1.0 LANGUAGES C CXX)
+project(MZMRecomp VERSION 0.3.0 LANGUAGES C CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -14,6 +14,8 @@ set(GBARECOMP_ROOT ""
 set(RECOMP_UI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui"
     CACHE PATH "Path to the pinned recomp-ui checkout")
 option(MZM_RECOMP_UI "Build the recomp-ui pre-boot launcher" ON)
+# Human-readable release identity shown in the launcher About page and the log.
+set(MZM_RELEASE_LABEL "Beta 3" CACHE STRING "Release label shown to users")
 # NES-PERF-1: opt-in timing/counter instrumentation for the NES harness only.
 option(MZM_PERF_PROFILE "Instrument mzm_nes_behavior_test (profiling builds only)" OFF)
 option(MZM_PERF_WRAP_TICK "With MZM_PERF_PROFILE: also count guest instructions (adds a call per instruction)" OFF)
@@ -55,10 +57,15 @@ endif()
 # display enhancements are unavailable.
 set(GBARECOMP_RUNTIME_UI_ROOT "${RECOMP_UI_ROOT}"
     CACHE PATH "recomp-ui checkout for the framework's in-game runtime menu")
+# No silent fallback: a build that asks for the launcher (the default) must have
+# recomp-ui, otherwise the result would lack the launcher and the Enhancements
+# menu without the builder noticing. Pass -DMZM_RECOMP_UI=OFF for a CLI-only host.
 if(MZM_RECOMP_UI AND NOT EXISTS "${GBARECOMP_RUNTIME_UI_ROOT}/src/recomp_runtime_ui.h")
-    message(WARNING
-        "recomp-ui not found at ${GBARECOMP_RUNTIME_UI_ROOT}: the in-game "
-        "Enhancements menu is disabled (ESC will quit as before).")
+    message(FATAL_ERROR
+        "recomp-ui not found at ${GBARECOMP_RUNTIME_UI_ROOT}. The launcher and "
+        "the in-game Enhancements menu need it. Run: "
+        "git submodule update --init --recursive recomp-ui "
+        "(or pass -DMZM_RECOMP_UI=OFF to build a CLI-only host).")
 endif()
 
 add_subdirectory("${GBARECOMP_ROOT}" gbarecomp_build EXCLUDE_FROM_ALL)
@@ -137,6 +144,18 @@ execute_process(COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse HEAD
     ERROR_QUIET RESULT_VARIABLE MZM_GIT_RESULT)
 if(NOT MZM_GIT_RESULT EQUAL 0)
     set(MZM_GIT_SHA "unknown")
+else()
+    execute_process(COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" diff --quiet HEAD
+        RESULT_VARIABLE MZM_GIT_DIRTY ERROR_QUIET)
+    if(NOT MZM_GIT_DIRTY EQUAL 0)
+        set(MZM_GIT_SHA "${MZM_GIT_SHA}-dirty")
+    endif()
+endif()
+execute_process(COMMAND git -C "${RECOMP_UI_ROOT}" rev-parse HEAD
+    OUTPUT_VARIABLE MZM_RECOMP_UI_SHA OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET RESULT_VARIABLE MZM_RECOMP_UI_GIT_RESULT)
+if(NOT MZM_RECOMP_UI_GIT_RESULT EQUAL 0)
+    set(MZM_RECOMP_UI_SHA "unknown")
 endif()
 
 target_compile_definitions(MZMRecomp PRIVATE
@@ -144,6 +163,8 @@ target_compile_definitions(MZMRecomp PRIVATE
     MZM_VERSION="${PROJECT_VERSION}"
     MZM_BUILD_SHA="${MZM_GIT_SHA}"
     MZM_GBARECOMP_SHA="${MZM_GBARECOMP_HEAD}"
+    MZM_RELEASE_LABEL="${MZM_RELEASE_LABEL}"
+    MZM_RECOMP_UI_SHA="${MZM_RECOMP_UI_SHA}"
 )
 
 # The state tests use no game data and do not require generated code to run.
@@ -421,7 +442,11 @@ if(MZM_RECOMP_UI)
         recomp_target_launcher_ui(mzm_launcher_ui
             CONSOLE gba
         )
-        target_compile_definitions(mzm_launcher_ui PRIVATE MZM_VERSION="${PROJECT_VERSION}")
+        target_compile_definitions(mzm_launcher_ui PRIVATE
+            MZM_VERSION="${PROJECT_VERSION}"
+            MZM_BUILD_SHA="${MZM_GIT_SHA}"
+            MZM_GBARECOMP_SHA="${MZM_GBARECOMP_HEAD}"
+            MZM_RELEASE_LABEL="${MZM_RELEASE_LABEL}")
 
         add_custom_command(TARGET MZMRecomp POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -450,9 +475,9 @@ if(MZM_RECOMP_UI)
 
         message(STATUS "MZM-Recomp: recomp-ui launcher enabled")
     else()
-        message(WARNING
+        message(FATAL_ERROR
             "MZM_RECOMP_UI=ON but recomp-ui is not initialized at "
-            "${RECOMP_UI_ROOT}; building CLI-only host. "
-            "Run: git submodule update --init --recursive recomp-ui")
+            "${RECOMP_UI_ROOT}. Run: git submodule update --init --recursive "
+            "recomp-ui, or pass -DMZM_RECOMP_UI=OFF for a CLI-only host.")
     endif()
 endif()

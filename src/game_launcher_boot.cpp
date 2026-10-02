@@ -163,7 +163,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
             window_width = w; window_height = h;
         }
     }
-    SDL_Window* window = SDL_CreateWindow("MZM Recompiled | Private Beta",
+    SDL_Window* window = SDL_CreateWindow("MZM Recompiled | " MZM_RELEASE_LABEL,
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (window) SDL_SetWindowMinimumSize(window, 720, 480);
@@ -213,7 +213,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
         if (bold) ImGui::PopFont();
         ImGui::SameLine(content > 550 ? content - 73 : 0);
         ImGui::TextColored(mzm::theme::muted, "v%s", MZM_VERSION);
-        ImGui::TextColored(mzm::theme::cool, "STATIC RECOMPILATION  /  PRIVATE BETA");
+        ImGui::TextColored(mzm::theme::cool, "STATIC RECOMPILATION  /  " MZM_RELEASE_LABEL " PUBLIC RUNTIME TEST");
         ImGui::Separator();
         if (checked_rom != rom.data()) {
             checked_rom = rom.data(); rom_error = mzm::validate_game_file(rom.data());
@@ -330,14 +330,18 @@ int game_launcher_preboot(std::vector<std::string>& args,
 #ifdef _WIN32
             ImGui::TextWrapped("Keyboard and controller bindings load from your MZMRecompiled AppData folder.");
 #else
-            ImGui::TextWrapped("Keyboard and controller bindings load from keybinds.ini and config.ini beside the executable.");
+            ImGui::TextWrapped("Keyboard and controller bindings load from mzm-keybinds.ini and mzm-config.ini beside the executable.");
 #endif
             ImGui::TextWrapped("Screen color model is selected at launch via [video].screen, --screen, or GBARECOMP_SCREEN.");
             ImGui::EndChild();
         } else {
-            heading("ABOUT", "MZM Recompiled  /  Private Beta", bold);
+            heading("ABOUT", "MZM Recompiled  /  " MZM_RELEASE_LABEL "  /  Public Runtime Test", bold);
             ImGui::BeginChild("##about", ImVec2(0, -92), true);
-            ImGui::Text("Version %s", MZM_VERSION);
+            ImGui::Text("%s  (version %s)", MZM_RELEASE_LABEL, MZM_VERSION);
+            ImGui::Text("MZM build: %.12s", MZM_BUILD_SHA);
+            ImGui::Text("GBARecomp:  %.12s", MZM_GBARECOMP_SHA);
+            ImGui::TextWrapped("Include these when you report a problem. The log is "
+                               "logs/latest.log (use Open Logs Folder below).");
             ImGui::TextWrapped("Experimental static recompilation project.");
             ImGui::TextWrapped("Independent fan and research project. Not affiliated with or endorsed by Nintendo.");
             ImGui::Separator();
