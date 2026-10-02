@@ -45,6 +45,15 @@ for k in [k for k in env if k.startswith("GBARECOMP_") and k != "GBARECOMP_AUDIO
     del env[k]                           # nothing test-only may be required
 proc = subprocess.Popen([exe, "--tcp-observe", str(port)], env=env, cwd=base,
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+import atexit
+def _cleanup():
+    """Never leave the game or the nested X server behind, even when a check raises."""
+    if proc.poll() is None:
+        proc.kill(); proc.wait()
+    try: xs.stop()
+    except Exception: pass
+    shutil.rmtree(base, ignore_errors=True)    # the work dir holds copies of the ROM and BIOS
+atexit.register(_cleanup)
 lines = []
 import threading
 threading.Thread(target=lambda: [lines.append(l.rstrip("\n")) for l in proc.stdout], daemon=True).start()
@@ -195,6 +204,5 @@ print("  info  files beside the ROM:", sorted(os.listdir(games)))
 print("  info  files beside the executable:", sorted(os.listdir(root)))
 print("  info  files in $HOME:", sorted(os.listdir(home)))
 print("  info  log head:"); print("\n".join("        " + l for l in log.splitlines()[:14]))
-xs.stop()
 print("RESULT:", "FAIL" if failures else "PASS")
 sys.exit(1 if failures else 0)
