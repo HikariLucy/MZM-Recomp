@@ -8,6 +8,12 @@ The project aims to run the original game logic as native host code using [GBARe
 > This repository does **not** contain the game ROM, Nintendo GBA BIOS, extracted copyrighted game assets, or distributable generated ROM-derived C/C++.
 > A legally obtained copy of the game is required.
 
+## Beta 3 public runtime test
+
+Test packages (Windows x64 — community validation requested; Linux x86_64 — tested) and the
+user documents are described in [`docs/beta3/README.md`](docs/beta3/README.md); maintainers see
+[`docs/BETA-3-RELEASE.md`](docs/BETA-3-RELEASE.md).
+
 ## Project status
 
 **Current phase:** M4 — Compatibility

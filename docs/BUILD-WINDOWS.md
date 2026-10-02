@@ -157,3 +157,14 @@ replace native Windows testing.
   (16 MiB, commit 4 KiB). Beta 2 does not raise it. The bounded hook needs about
   450 KiB on Linux; a Windows-side test of a smaller reserve is not done.
 - The Wine-less Linux host cannot execute the `.exe`: Windows runtime smoke is PENDING.
+
+## Beta 3 (Public Runtime Test)
+
+Beta 3 reuses this toolchain on the `feat/public-beta-3` line (the Windows commits of
+`feat/windows-beta-2` are cherry-picked; the Beta 2 branch and ZIP are untouched). It is a
+new Release build at GBARecomp `266f82f` with the Enhancements menu; see
+`docs/BETA-3-RELEASE.md` for the exact dependencies and commands. Output:
+`dist/public-beta-3/MZMRecompiled-Beta-3-Windows-x64.zip`. `latest.log` now also records the
+release label, build SHAs, ROM/BIOS validation results, strict-static state and a crash marker
+(unhandled exception code and address). Windows runtime remains **UNVERIFIED** until a real
+Windows run; `scripts/audit-beta-package.sh` performs the static inspection only.
