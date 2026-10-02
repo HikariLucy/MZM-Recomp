@@ -148,9 +148,15 @@ while time.time() < end:
         if f - f0 >= 300: ok = True; break
     time.sleep(0.3)
 check(ok, "guest runs (300+ frames after PLAY)")
-time.sleep(2); shot("04-title.png")
-im = pixels(); nonblack = sum(1 for p in im.resize((128, 80)).getdata() if max(p) > 24)
-check(nonblack > 1500, f"a non-black picture is on screen ({nonblack}/10240 px)")
+# The game starts with a sparse text intro before the logo/title: poll for a rich picture.
+best = 0; end = time.time() + 90
+while time.time() < end:
+    im = pixels(); n = sum(1 for p in im.resize((128, 80)).getdata() if max(p) > 24)
+    if n > best:
+        best = n; shot("04-title.png")
+    if best > 1500: break
+    time.sleep(2)
+check(best > 1500, f"the game reaches a full picture within 90 s (best {best}/10240 px)")
 xs.key("Escape"); time.sleep(1); shot("05-esc-menu.png")
 a = frame(); time.sleep(0.6); b = frame()
 check(a == b, "ESC opens the Enhancements menu and pauses the guest")
