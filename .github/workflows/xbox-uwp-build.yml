@@ -35,7 +35,7 @@ jobs:
           Write-Host "=== Visual Studio Installation & Workloads ==="
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           if (Test-Path $vswhere) {
-            & $vswhere -latest -products * -format list
+            & $vswhere -latest -products * -format text
           }
 
           Write-Host "=== Installed Windows SDKs ==="
