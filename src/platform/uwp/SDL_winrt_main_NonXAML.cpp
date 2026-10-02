@@ -2,6 +2,7 @@
     SDL_winrt_main_NonXAML.cpp, placed in the public domain by David Ludwig  3/13/14
 */
 
+#define SDL_WINRT_METADATA_FILE_AVAILABLE 1
 #include "SDL_main.h"
 #include <wrl.h>
 

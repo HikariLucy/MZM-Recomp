@@ -86,7 +86,6 @@ jobs:
           add_executable(sdl_smoke WIN32 sdl_smoke.cpp sdl_winrt_main.cpp)
           target_include_directories(sdl_smoke PRIVATE "$sdlInc")
           target_link_libraries(sdl_smoke PRIVATE "$sdlLib")
-          set_source_files_properties(sdl_winrt_main.cpp PROPERTIES COMPILE_FLAGS "/ZW")
           "@
           Set-Content -Path "smoke_test\CMakeLists.txt" -Value $smokeCmake
 
@@ -103,6 +102,7 @@ jobs:
           Set-Content -Path "smoke_test\sdl_smoke.cpp" -Value $smokeCode
 
           $smokeWinRT = @"
+          #define SDL_WINRT_METADATA_FILE_AVAILABLE 1
           #include <windows.h>
           #include <SDL_main.h>
           #pragma comment(lib, "runtimeobject.lib")
