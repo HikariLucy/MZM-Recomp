@@ -70,6 +70,15 @@ endif()
 
 add_subdirectory("${GBARECOMP_ROOT}" gbarecomp_build EXCLUDE_FROM_ALL)
 
+# GBARecomp bakes its absolute source directory into the runtime for the
+# self-heal overlay compiler, which strict-static builds never use. Do not ship
+# the builder's filesystem layout inside the executable.
+get_target_property(_mzm_rt_defs gbarecomp_runtime COMPILE_DEFINITIONS)
+if(_mzm_rt_defs)
+    list(TRANSFORM _mzm_rt_defs REPLACE "^GBARECOMP_SRC_DIR=.*" "GBARECOMP_SRC_DIR=\"\"")
+    set_property(TARGET gbarecomp_runtime PROPERTY COMPILE_DEFINITIONS "${_mzm_rt_defs}")
+endif()
+
 file(GLOB GAME_GENERATED_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/generated/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/generated/*.cpp")
