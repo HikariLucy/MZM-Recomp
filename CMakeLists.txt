@@ -22,6 +22,9 @@ option(MZM_PLATFORM_UWP "Target Universal Windows Platform (Xbox Series X|S / UW
 if(MZM_PLATFORM_UWP)
     add_compile_definitions(MZM_PLATFORM_UWP=1)
 endif()
+if(MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+endif()
 # NES-PERF-1: opt-in timing/counter instrumentation for the NES harness only.
 option(MZM_PERF_PROFILE "Instrument mzm_nes_behavior_test (profiling builds only)" OFF)
 option(MZM_PERF_WRAP_TICK "With MZM_PERF_PROFILE: also count guest instructions (adds a call per instruction)" OFF)
