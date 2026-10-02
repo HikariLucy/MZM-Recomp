@@ -44,3 +44,7 @@ If YES:
 ```
 
 Please include the "Release / MZM build" line from About (or the first line of `latest.log`).
+
+---
+*Builds after Beta 3 only:* the launcher has a **Support** page that fills most of this in
+(**Copy Bug Report**) and opens the GitHub issue form. See `docs/REPORTING.md`.

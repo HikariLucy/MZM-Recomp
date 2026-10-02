@@ -1,0 +1,106 @@
+name: MZM Recompiled Beta — Bug Report
+description: Report a problem with the MZM Recompiled beta
+title: "[Beta] "
+labels: ["bug", "beta"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. In the launcher, **Support → Copy Bug Report** prepares most of this for you.
+        **Do not upload your ROM, BIOS or save file.** Nothing is sent automatically.
+  - type: input
+    id: build
+    attributes:
+      label: Build / version
+      description: "Shown in the launcher (Support or About) and on the first line of latest.log, e.g. Beta 4, MZM f30240a."
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 23H2 / Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+  - type: input
+    id: gamepad
+    attributes:
+      label: Gamepad
+      description: Model, or "none".
+  - type: input
+    id: refresh
+    attributes:
+      label: Display refresh
+      placeholder: 60 Hz / 144 Hz
+  - type: dropdown
+    id: component
+    attributes:
+      label: Problem area
+      options:
+        - Launcher
+        - Game startup
+        - Graphics
+        - Audio
+        - Controls
+        - Save
+        - NES
+        - Enhancements
+        - Performance
+        - Windows security / antivirus
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+      description: You can paste the whole "Copy Bug Report" text here.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Attach latest.log (launcher → Support → Open Log Folder). Check it for private information first. If useful, attach a screenshot too.
+  - type: textarea
+    id: antivirus
+    attributes:
+      label: Antivirus / SmartScreen (Windows only)
+      description: Product, exact detection name or message, Windows version, and the SHA-256 of the ZIP and of MZMRecomp.exe. Please do not disable your antivirus.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have not attached ROM or BIOS files.
+          required: true
+        - label: I understand this is beta software.
+          required: true
