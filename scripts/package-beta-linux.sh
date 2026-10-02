@@ -32,6 +32,8 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/assets/icons" "$STAGE/assets/img" "$STAGE/assets/fonts" "$STAGE/configs" \
     "$STAGE/THIRD-PARTY-LICENSES"
 cp "$BUILD/MZMRecomp" "$STAGE/MZMRecomp"
+# Ship without the symbol table: it carries generated-source file names and has no user value.
+strip --strip-unneeded "$STAGE/MZMRecomp"
 for font in LatoLatin-Regular.ttf LatoLatin-Bold.ttf \
             NotoSansSymbols2-Regular.ttf OpenMoji-black-glyf.ttf; do
     cp "$BUILD/assets/fonts/$font" "$STAGE/assets/fonts/"

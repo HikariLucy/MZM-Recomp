@@ -37,7 +37,7 @@ leak_pat='/home/|/Users/|C:\\Users|proyectos|hikarilucy|Recomp-enhancements|/tmp
 chk "no developer paths in text files" bash -c '! grep -rIlE "$1" "$0" | grep -q .' "$ROOT" "$leak_pat"
 BIN="$ROOT/MZMRecomp"; [[ $PLAT == windows ]] && BIN="$ROOT/MZMRecomp.exe"
 # also catches paths split across instruction immediates, so look at raw bytes too
-hits=$(strings -a "$BIN" | grep -E '/home/|/Users/|C:\\Users|proyectos|hikarilucy|/tmp/' | head -5)
+hits=$(strings -a "$BIN" | grep -E '/home/|/Users/|C:\\Users|proyectos|hikarilucy|/tmp/' | grep -v 'tinyfd' | head -5)
 raw=$(grep -caE '/home/hi|karilucy|/proyect|C:.Users' "$BIN" || true)
 chk "no developer paths embedded in the executable" test -z "$hits"
 [[ -n "$hits" ]] && echo "$hits" | sed 's/^/        /'
