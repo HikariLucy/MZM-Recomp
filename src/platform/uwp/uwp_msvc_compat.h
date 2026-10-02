@@ -146,8 +146,67 @@ static inline int MessageBoxA_uwp(void*, const char*, const char*, unsigned int)
 #endif
 
 #ifndef LoadLibraryA
-static inline void* LoadLibraryA_uwp(const char*) { return NULL; }
+static inline HMODULE LoadLibraryA_uwp(const char*) { return NULL; }
 #define LoadLibraryA LoadLibraryA_uwp
+#endif
+
+#ifndef TIMERR_NOERROR
+#define TIMERR_NOERROR 0
+#endif
+#ifndef timeBeginPeriod
+static inline unsigned int timeBeginPeriod_uwp(unsigned int) { return TIMERR_NOERROR; }
+#define timeBeginPeriod timeBeginPeriod_uwp
+#endif
+#ifndef timeEndPeriod
+static inline unsigned int timeEndPeriod_uwp(unsigned int) { return TIMERR_NOERROR; }
+#define timeEndPeriod timeEndPeriod_uwp
+#endif
+
+#ifndef DWM_TIMING_INFO
+typedef struct _UNSIGNED_RATIO {
+    unsigned int uiNumerator;
+    unsigned int uiDenominator;
+} UNSIGNED_RATIO;
+
+typedef struct _DWM_TIMING_INFO {
+    unsigned int cbSize;
+    UNSIGNED_RATIO rateRefresh;
+    unsigned long long qpcRefreshPeriod;
+    UNSIGNED_RATIO rateCompose;
+    unsigned long long qpcVBlank;
+    unsigned long long cRefresh;
+    unsigned int cDXRefresh;
+    unsigned long long qpcCompose;
+    unsigned long long cFrame;
+    unsigned int cDXPresent;
+    unsigned long long cRefreshFrame;
+    unsigned long long cFrameSubmitted;
+    unsigned int cDXPresentSubmitted;
+    unsigned long long cFrameConfirmed;
+    unsigned int cDXPresentConfirmed;
+    unsigned long long cRefreshConfirmed;
+    unsigned int cDXRefreshConfirmed;
+    unsigned long long cFramesLate;
+    unsigned int cFramesOutstanding;
+    unsigned long long cFrameDisplayed;
+    unsigned long long qpcFrameDisplayed;
+    unsigned long long cRefreshFrameDisplayed;
+    unsigned long long cFrameComplete;
+    unsigned long long qpcFrameComplete;
+    unsigned long long cFramePending;
+    unsigned long long qpcFramePending;
+    unsigned long long cFramesDisplayed;
+    unsigned long long cFramesComplete;
+    unsigned long long cFramesPending;
+    unsigned long long cFramesAvailable;
+    unsigned long long cFramesDropped;
+    unsigned long long cFramesMissed;
+    unsigned long long cRefreshConfirmedLate;
+    unsigned long long cRefreshFrameMissed;
+    unsigned long long cRefreshFrameDisplayedLate;
+    unsigned long long cFramesSubmittedLate;
+    unsigned long long cFramesDiscarded;
+} DWM_TIMING_INFO;
 #endif
 
 #endif // !WINAPI_PARTITION_DESKTOP
