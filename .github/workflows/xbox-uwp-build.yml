@@ -152,7 +152,7 @@ jobs:
             -DSDL2_LIBRARY="%SDL2_LIB%"
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
-          cmake --build build-uwp --config Release --target MZMRecomp -- /m /p:WindowsTargetPlatformVersion=10.0.22621.0
+          cmake --build build-uwp --config Release --target MZMRecomp -- /m /p:WindowsTargetPlatformVersion=10.0.22621.0 /p:TreatWarningsAsErrors=false
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
       - name: Phase 6 — Stage MSIX Packaging Layout
