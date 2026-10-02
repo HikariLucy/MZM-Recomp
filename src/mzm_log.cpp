@@ -157,8 +157,13 @@ void capture_previous_session(const std::filesystem::path& dir) {
     const fs::path latest = dir / "latest.log";
     std::error_code ec;
     if (!fs::is_regular_file(latest, ec)) return;
-    std::ifstream in(latest, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // Classify from the tail only (the end markers are the last lines): bounded work at startup.
+    std::ifstream in(latest, std::ios::binary | std::ios::ate);
+    const std::streamoff size = in.tellg();
+    const std::streamoff start = size > 65536 ? size - 65536 : 0;
+    in.seekg(start);
+    std::string text(static_cast<size_t>(size - start), '\0');
+    in.read(text.data(), static_cast<std::streamsize>(text.size()));
     g_previous_status = session_status_from_log(text);
     fs::copy_file(latest, dir / "previous.log", fs::copy_options::overwrite_existing, ec);
     if (g_previous_status == SessionStatus::Crash || g_previous_status == SessionStatus::Unexpected)
