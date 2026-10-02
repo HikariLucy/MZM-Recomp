@@ -101,11 +101,12 @@ def main():
         game = hd.Game(exe, args.config, args.rom, args.bios, xs.name, work,
                        extra_args=["--load-state", state])
         win = xs.game_window()
-        xs.move(2, 2)
-        time.sleep(6)
-        check(f"savestate_loaded" in game.log() and f"frame={STATE_FRAME}" in game.log(),
-              f"host loaded the NES state at guest frame {STATE_FRAME}")
-        menu = hd.Menu(xs)
+        xs.park()                      # the host's real pointer must not hover the menu (see run-host-display.py)
+        game.wait_ready()
+        hd.check_wait(lambda: ("savestate_loaded" in game.log() and f"frame={STATE_FRAME}" in game.log(),
+                               game.log()[-300:]),
+                      f"host loaded the NES state at guest frame {STATE_FRAME}", timeout=15.0)
+        menu = hd.Menu(xs, game, win)
         r0 = game.frame()
         time.sleep(1.5)
         r1 = game.frame()
@@ -213,8 +214,8 @@ def main():
         game = hd.Game(exe, args.config, args.rom, args.bios, xs.name, work, observe=False,
                        extra_args=["--load-state", state])
         win = xs.game_window()
-        xs.move(2, 2)
-        time.sleep(6)
+        hd.check(game.wait_log("host_window: presentation", timeout=60.0), "windowed session presented its first frame")
+        menu = hd.Menu(xs, None, win)  # no observe port in this session: the picture is the menu evidence
         for _ in range(10):
             menu.open()
             time.sleep(0.3)
