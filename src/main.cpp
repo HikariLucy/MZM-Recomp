@@ -73,6 +73,8 @@ int main(int argc, char** argv) {
     }
     mzm_install_ram_dispatch_hook();
     mzm::log_event("start");
+    mzm::log_event((std::string("previous_session=") +
+                    mzm::session_status_name(mzm::previous_session_status())).c_str());
 
     gbarecomp::RunOptions opts;
     mzm_configure_milestone_probe(opts);

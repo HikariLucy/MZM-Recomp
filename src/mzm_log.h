@@ -2,6 +2,8 @@
 
 #include <filesystem>
 
+#include "mzm_diagnostics.h"
+
 namespace mzm {
 void log_event(const char* event);
 // Per-user log directory (Windows: %LOCALAPPDATA%\MZMRecompiled\logs,
@@ -12,4 +14,7 @@ std::filesystem::path log_directory();
 // the streams are redirected; on Linux they are copied (tee) so terminal output
 // and test harnesses keep working. Also installs a last-gasp crash marker.
 void redirect_console_to_log();
+// How the previous run ended, judged from the old latest.log before it is replaced.
+// (That log is kept as previous.log, and as last-crash.log when it ended badly.)
+SessionStatus previous_session_status();
 }

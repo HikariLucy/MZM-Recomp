@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <iomanip>
 
 #ifndef MZM_BUILD_SHA
@@ -147,6 +148,26 @@ void install_crash_marker() {
 
 std::filesystem::path log_directory() { return compute_log_dir(); }
 
+namespace {
+SessionStatus g_previous_status = SessionStatus::Unknown;
+
+// Called before latest.log is truncated: classify the old run and keep its log.
+void capture_previous_session(const std::filesystem::path& dir) {
+    namespace fs = std::filesystem;
+    const fs::path latest = dir / "latest.log";
+    std::error_code ec;
+    if (!fs::is_regular_file(latest, ec)) return;
+    std::ifstream in(latest, std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    g_previous_status = session_status_from_log(text);
+    fs::copy_file(latest, dir / "previous.log", fs::copy_options::overwrite_existing, ec);
+    if (g_previous_status == SessionStatus::Crash || g_previous_status == SessionStatus::Unexpected)
+        fs::copy_file(latest, dir / "last-crash.log", fs::copy_options::overwrite_existing, ec);
+}
+}  // namespace
+
+SessionStatus previous_session_status() { return g_previous_status; }
+
 void redirect_console_to_log() {
     namespace fs = std::filesystem;
     const fs::path dir = compute_log_dir();
@@ -154,6 +175,7 @@ void redirect_console_to_log() {
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (ec) return;
+    capture_previous_session(dir);
     const fs::path file = dir / "latest.log";
 #ifdef _WIN32
     if (!std::freopen(file.string().c_str(), "w", stdout)) return;

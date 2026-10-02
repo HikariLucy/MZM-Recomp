@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MZMRecomp VERSION 0.3.0 LANGUAGES C CXX)
+project(MZMRecomp VERSION 0.4.0 LANGUAGES C CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -15,7 +15,8 @@ set(RECOMP_UI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui"
     CACHE PATH "Path to the pinned recomp-ui checkout")
 option(MZM_RECOMP_UI "Build the recomp-ui pre-boot launcher" ON)
 # Human-readable release identity shown in the launcher About page and the log.
-set(MZM_RELEASE_LABEL "Beta 3" CACHE STRING "Release label shown to users")
+set(MZM_RELEASE_LABEL "Beta 4 (dev)" CACHE STRING "Release label shown to users")
+set(MZM_RELEASE_CHANNEL "beta" CACHE STRING "Release channel: development | beta | rc | stable")
 # NES-PERF-1: opt-in timing/counter instrumentation for the NES harness only.
 option(MZM_PERF_PROFILE "Instrument mzm_nes_behavior_test (profiling builds only)" OFF)
 option(MZM_PERF_WRAP_TICK "With MZM_PERF_PROFILE: also count guest instructions (adds a call per instruction)" OFF)
@@ -99,6 +100,7 @@ target_include_directories(mzm_generated_objects PRIVATE
 add_executable(MZMRecomp
     src/main.cpp
     src/mzm_log.cpp
+    src/mzm_diagnostics.cpp
     src/mzm_ram_dispatch.cpp
     src/mzm_milestone_probe.cpp
     $<TARGET_OBJECTS:mzm_generated_objects>
@@ -174,6 +176,9 @@ target_compile_definitions(MZMRecomp PRIVATE
     MZM_GBARECOMP_SHA="${MZM_GBARECOMP_HEAD}"
     MZM_RELEASE_LABEL="${MZM_RELEASE_LABEL}"
     MZM_RECOMP_UI_SHA="${MZM_RECOMP_UI_SHA}"
+    MZM_RELEASE_CHANNEL="${MZM_RELEASE_CHANNEL}"
+    MZM_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+    MZM_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
 )
 
 # The state tests use no game data and do not require generated code to run.
@@ -193,6 +198,11 @@ if(BUILD_TESTING)
     target_include_directories(mzm_display_settings_test PRIVATE
         "${GBARECOMP_ROOT}/src/runtime")
     add_test(NAME mzm-display-settings COMMAND mzm_display_settings_test)
+
+    # Support/report-problem text generation (pure: no window, ROM or generated code).
+    add_executable(mzm_diagnostics_test tests/diagnostics_test.cpp src/mzm_diagnostics.cpp)
+    target_include_directories(mzm_diagnostics_test PRIVATE src "${GBARECOMP_ROOT}/src/runtime")
+    add_test(NAME mzm-diagnostics COMMAND mzm_diagnostics_test)
 
     add_executable(mzm_haze_resolver_test tests/m4/haze_resolver_test.cpp)
     target_include_directories(mzm_haze_resolver_test PRIVATE src)
@@ -371,6 +381,12 @@ if(BUILD_TESTING)
                         "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
                 set_tests_properties(mzm-host-display PROPERTIES TIMEOUT 600
                     SKIP_RETURN_CODE 77)
+                add_test(NAME mzm-support-module
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-support-module.py"
+                        "$<TARGET_FILE:MZMRecomp>" "${MZM_TEST_ROM}" "${MZM_TEST_BIOS}")
+                set_tests_properties(mzm-support-module PROPERTIES TIMEOUT 300
+                    SKIP_RETURN_CODE 77)
                 add_test(NAME mzm-nes-pause
                     COMMAND "${Python3_EXECUTABLE}"
                         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-nes-pause.py"
@@ -438,6 +454,7 @@ if(MZM_RECOMP_UI)
         add_library(mzm_launcher_ui STATIC
             src/game_launcher_boot.cpp
             src/launcher_state.cpp
+            src/mzm_support.cpp
         )
         target_include_directories(mzm_launcher_ui PRIVATE
             "${RECOMP_UI_ROOT}/src/third_party/imgui"
