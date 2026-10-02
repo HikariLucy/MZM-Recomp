@@ -122,10 +122,12 @@ jobs:
 
       - name: Phase 4 — Restore Recompiled Guest Corpus
         shell: bash
+        env:
+          MZM_BUILD_KEY: ${{ secrets.MZM_BUILD_KEY }}
         run: |
           echo "=== Unpacking Recompiled Corpus ==="
           mkdir -p generated
-          openssl enc -d -aes-256-cbc -pbkdf2 -in assets/uwp/mzm_generated.tar.gz.enc -pass pass:"${{ secrets.MZM_BUILD_KEY }}" | tar -xzf - -C generated
+          openssl enc -d -aes-256-cbc -pbkdf2 -in assets/uwp/mzm_generated.tar.gz.enc -pass "env:MZM_BUILD_KEY" | tar -xzf - -C generated
           ls -la generated/ | head -n 10
 
       - name: Phase 5 — Configure & Build MZMRecomp UWP x64
@@ -148,23 +150,27 @@ jobs:
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
       - name: Phase 6 — Stage MSIX Packaging Layout
-        shell: cmd
+        shell: powershell
         run: |
-          mkdir dist\staging
-          mkdir dist\staging\assets\icons
-          mkdir dist\staging\assets\fonts
-          mkdir dist\staging\configs
+          New-Item -ItemType Directory -Path "dist\staging\assets\icons" -Force | Out-Null
+          New-Item -ItemType Directory -Path "dist\staging\assets\fonts" -Force | Out-Null
+          New-Item -ItemType Directory -Path "dist\staging\configs" -Force | Out-Null
 
-          copy build-uwp\Release\MZMRecomp.exe dist\staging\
-          for /f "delims=" %%i in ('powershell -Command "(Get-ChildItem -Path 'sdl2-src\VisualC-WinRT' -Filter 'SDL2.dll' -Recurse | Select-Object -First 1).FullName"') do copy "%%i" dist\staging\
+          $mzmExe = (Get-ChildItem -Path "build-uwp" -Filter "MZMRecomp.exe" -Recurse | Select-Object -First 1).FullName
+          Write-Host "Staging MZMRecomp.exe from: $mzmExe"
+          Copy-Item $mzmExe -Destination "dist\staging\MZMRecomp.exe"
 
-          copy assets\uwp\Package.appxmanifest dist\staging\AppxManifest.xml
-          copy assets\icons\*.png dist\staging\assets\icons\
-          copy recomp-ui\assets\fonts\*.ttf dist\staging\assets\fonts\
-          copy configs\mzm-us.toml dist\staging\configs\
-          copy configs\nes-emulator-map-us.toml dist\staging\configs\
+          $sdlDll = (Get-ChildItem -Path "sdl2-src\VisualC-WinRT" -Filter "SDL2.dll" -Recurse | Select-Object -First 1).FullName
+          Write-Host "Staging SDL2.dll from: $sdlDll"
+          Copy-Item $sdlDll -Destination "dist\staging\SDL2.dll"
 
-          dir /s dist\staging
+          Copy-Item "assets\uwp\Package.appxmanifest" -Destination "dist\staging\AppxManifest.xml"
+          Copy-Item "assets\icons\*.png" -Destination "dist\staging\assets\icons\"
+          Copy-Item "recomp-ui\assets\fonts\*.ttf" -Destination "dist\staging\assets\fonts\"
+          Copy-Item "configs\mzm-us.toml" -Destination "dist\staging\configs\"
+          Copy-Item "configs\nes-emulator-map-us.toml" -Destination "dist\staging\configs\"
+
+          Get-ChildItem "dist\staging" -Recurse | Select-Object FullName
 
       - name: Phase 7 — Package MSIX & Self-Sign Test Certificate
         shell: powershell
