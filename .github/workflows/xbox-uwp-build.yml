@@ -204,8 +204,13 @@ jobs:
           & $signTool sign /fd SHA256 /a /f dist\dev.pfx /p MZMDevPass2026 dist\MZMRecompiled-Xbox-UWP-x64.msix
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+          Write-Host "=== Trusting Dev Certificate for Local Verification ==="
+          Import-Certificate -FilePath dist\dev.cer -CertStoreLocation "Cert:\LocalMachine\Root"
+          Import-Certificate -FilePath dist\dev.cer -CertStoreLocation "Cert:\CurrentUser\Root"
+
           Write-Host "=== Verifying Signature ==="
           & $signTool verify /pa /v dist\MZMRecompiled-Xbox-UWP-x64.msix
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Phase 8 — Prepare Deliverable Artifacts for Xbox Device Portal
         shell: powershell
