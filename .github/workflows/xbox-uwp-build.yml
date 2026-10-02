@@ -21,7 +21,13 @@ jobs:
           repository: HikariLucy/gbarecomp
           ref: 266f82f556fe995ece1bfc558cfe59496b0ef31c
           path: gbarecomp
-          submodules: recursive
+
+      - name: Checkout arm-recomp-core dependency
+        uses: actions/checkout@v4
+        with:
+          repository: mstan/arm-recomp-core
+          ref: efbfe13135bf3da6a6d8c8af7c171fb59e7c9133
+          path: gbarecomp/external/arm-recomp-core
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
