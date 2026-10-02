@@ -60,6 +60,17 @@ int main(int argc, char** argv) {
     }
 
     mzm::redirect_console_to_log();
+
+    // Release builds run strict-static by default: a missing static entry stops with an
+    // error instead of silently compiling or interpreting code at run time. Setting
+    // GBARECOMP_STRICT_STATIC explicitly (e.g. =0 for development) is still honoured.
+    if (!std::getenv("GBARECOMP_STRICT_STATIC")) {
+#ifdef _WIN32
+        _putenv_s("GBARECOMP_STRICT_STATIC", "1");
+#else
+        setenv("GBARECOMP_STRICT_STATIC", "1", 1);
+#endif
+    }
     mzm_install_ram_dispatch_hook();
     mzm::log_event("start");
 
