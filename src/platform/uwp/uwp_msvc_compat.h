@@ -14,6 +14,12 @@
 
 #if defined(__cplusplus)
 #if defined(_MSC_VER)
+#ifndef __attribute__
+#define __attribute__(x)
+#endif
+#ifndef __builtin_frame_address
+#define __builtin_frame_address(x) _AddressOfReturnAddress()
+#endif
 static inline int __builtin_clz(unsigned int x) {
     unsigned long index;
     if (_BitScanReverse(&index, (unsigned long)x)) {
