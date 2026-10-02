@@ -2,6 +2,8 @@
 #include "launcher_state.h"
 #include "mzm_theme.h"
 #include "mzm_log.h"
+#include "mzm_support.h"
+#include "mzm_diagnostics.h"
 #include "launcher_files.h"
 #include "launcher_gl.h"
 #include "windows_executable_path.h"
@@ -107,7 +109,7 @@ void set_window_icon(SDL_Window* window, const fs::path& executable) {
     if (surface) { SDL_SetWindowIcon(window, surface); SDL_FreeSurface(surface); }
     else std::fprintf(stderr, "[mzm-launcher] icon unavailable: %s\n", icon.string().c_str());
 }
-enum class Page { Setup, Home, Enhancements, Settings, Data, About };
+enum class Page { Setup, Home, Enhancements, Settings, Data, About, Support };
 }
 
 int game_launcher_preboot(std::vector<std::string>& args,
@@ -147,6 +149,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
         else if (std::strcmp(preview, "data") == 0) page = Page::Data;
         else if (std::strcmp(preview, "settings") == 0) page = Page::Settings;
         else if (std::strcmp(preview, "about") == 0) page = Page::About;
+        else if (std::strcmp(preview, "support") == 0) page = Page::Support;
     }
     mzm::log_event(page == Page::Home ? "game_data=validated" : "game_data=setup_required");
     std::string message;
@@ -192,6 +195,44 @@ int game_launcher_preboot(std::vector<std::string>& args,
         / "assets/icons/mzm-brand-helm-core.png";
     LauncherTexture helm = launcher_texture_load(brand_path.string().c_str());
     if (!helm.id) std::fprintf(stderr, "[mzm-launcher] brand unavailable: %s\n", brand_path.string().c_str());
+    // ---- Support module state. Everything is collected on demand (page open / Refresh),
+    // never per frame, and nothing leaves the machine unless the user clicks an action.
+    mzm::SystemInfo sysinfo; bool sysinfo_loaded = false;
+    mzm::SettingsInfo settings_info;
+    std::string tail_text; bool tail_loaded = false, show_tail = false;
+    int problem_idx = static_cast<int>(mzm::problem_areas().size()) - 1;
+    std::vector<const char*> problem_items;
+    for (const auto& a : mzm::problem_areas()) problem_items.push_back(a.c_str());
+    const std::string home = mzm::home_directory();
+    const fs::path log_dir = mzm::user_log_dir();
+    const mzm::SessionStatus last_session = mzm::previous_session_status();
+    auto refresh_support = [&]() {
+        sysinfo = mzm::collect_system_info(window); sysinfo_loaded = true;
+        settings_info = mzm::describe_display_settings(
+            mzm::read_text_file(mzm::config_ini_path(executable), 1 << 16));
+        tail_loaded = false;
+    };
+    auto make_input = [&]() {
+        mzm::DiagnosticInput in;
+        in.build = mzm::current_build_info();
+        in.system = sysinfo; in.settings = settings_info;
+        auto state_of = [](const PathBuffer& path, const std::string& error) {
+            return !path[0] ? mzm::FileState::NotConfigured
+                 : error.empty() ? mzm::FileState::Valid : mzm::FileState::Invalid;
+        };
+        in.rom = state_of(rom, rom_error); in.bios = state_of(bios, bios_error);
+        const char* strict = std::getenv("GBARECOMP_STRICT_STATIC");
+        in.strict_static = strict && *strict == '1';
+        in.config_path = mzm::redact_user_path(mzm::config_ini_path(executable).string(), home);
+        in.log_path = mzm::redact_user_path((log_dir / "latest.log").string(), home);
+        in.last_session = last_session;
+        in.problem_area = mzm::problem_areas()[static_cast<size_t>(problem_idx)];
+        return in;
+    };
+    auto copy_text = [&](const std::string& text, const char* what) {
+        message = mzm::clipboard_copy(text) ? std::string(what) + " copied to the clipboard."
+                                            : "Could not access the clipboard.";
+    };
     bool running = true, play = false;
     while (running) {
         SDL_Event event;
@@ -301,10 +342,11 @@ int game_launcher_preboot(std::vector<std::string>& args,
                 ImGui::TextColored(mzm::theme::muted, "%s", features);
             }
             ImGui::EndChild();
-            const float nav = std::min(170.f, (content-30.f)/4.f);
+            const float nav = std::min(170.f, (content-40.f)/5.f);
             if (ImGui::Button("Game Data", ImVec2(nav, 42))) page = Page::Data;
             ImGui::SameLine(); if (ImGui::Button("Enhancements", ImVec2(nav, 42))) page = Page::Enhancements;
             ImGui::SameLine(); if (ImGui::Button("Settings", ImVec2(nav, 42))) page = Page::Settings;
+            ImGui::SameLine(); if (ImGui::Button("Support", ImVec2(nav, 42))) { page = Page::Support; sysinfo_loaded = false; }
             ImGui::SameLine(); if (ImGui::Button("About", ImVec2(nav, 42))) page = Page::About;
         } else if (page == Page::Enhancements) {
             heading("NATIVE ENHANCEMENTS", "Host runtime capabilities for play and presentation.", bold);
@@ -334,6 +376,78 @@ int game_launcher_preboot(std::vector<std::string>& args,
 #endif
             ImGui::TextWrapped("Screen color model is selected at launch via [video].screen, --screen, or GBARECOMP_SCREEN.");
             ImGui::EndChild();
+        } else if (page == Page::Support) {
+            if (!sysinfo_loaded) refresh_support();
+            const mzm::BuildInfo build = mzm::current_build_info();
+            heading("SUPPORT", "Found a problem? Help us improve MZM Recompiled.", bold);
+            ImGui::BeginChild("##support", ImVec2(0, -72.f), true);
+            if (last_session == mzm::SessionStatus::Crash || last_session == mzm::SessionStatus::Unexpected) {
+                ImGui::TextColored(mzm::theme::warning, "%s",
+                    last_session == mzm::SessionStatus::Crash ? "A previous crash was detected."
+                                                              : "The last session may have ended unexpectedly.");
+                ImGui::TextWrapped("Its log was kept as previous.log / last-crash.log in the log folder. "
+                                   "Please open the log folder and copy a bug report.");
+                ImGui::Separator();
+            }
+            ImGui::TextColored(mzm::theme::cool, "%s  /  %s", mzm::build_headline(build).c_str(), build.platform.c_str());
+            ImGui::SameLine(); ImGui::Text("  Build %s  GBARecomp %s", mzm::short_sha(build.mzm_sha).c_str(),
+                        mzm::short_sha(build.gbarecomp_sha).c_str());
+            ImGui::Separator();
+            ImGui::TextUnformatted("Problem area:");
+            ImGui::SameLine(); ImGui::SetNextItemWidth(260.f);
+            ImGui::Combo("##area", &problem_idx, problem_items.data(), static_cast<int>(problem_items.size()));
+            const float bw = std::max(150.f, (ImGui::GetContentRegionAvail().x - 24.f) / 3.f);
+            if (primary_button("Report Issue on GitHub", ImVec2(bw, 40))) {
+                // Copies the report, then opens the new-issue page only: nothing is filled in or sent.
+                const bool copied = mzm::clipboard_copy(mzm::format_bug_report(make_input()));
+                const bool opened = mzm::open_url(mzm::issue_url());
+                message = opened ? (copied ? "Bug report copied. Paste it into the GitHub issue that just opened."
+                                           : "Opened GitHub Issues (clipboard unavailable: use Copy Bug Report).")
+                                 : std::string("Could not open the browser. Open ") + mzm::kIssuesNewUrl +
+                                   " yourself" + (copied ? " and paste the copied report." : ".");
+            }
+            ImGui::SameLine(); if (ImGui::Button("Copy Bug Report", ImVec2(bw, 40)))
+                copy_text(mzm::format_bug_report(make_input()), "Bug report");
+            ImGui::SameLine(); if (ImGui::Button("Copy Diagnostic Info", ImVec2(bw, 40)))
+                copy_text(mzm::format_diagnostic(make_input()), "Diagnostic info");
+            if (ImGui::Button("Open Log Folder", ImVec2(bw, 36))) {
+                if (!mzm::open_folder(log_dir)) message = "Could not open the folder. Path: " + mzm::redact_user_path(log_dir.string(), home);
+            }
+            ImGui::SameLine(); if (ImGui::Button("Open latest.log", ImVec2(bw, 36)))
+                if (!mzm::open_file(log_dir / "latest.log")) message = "Could not open latest.log (no log yet, or no default app).";
+            ImGui::SameLine(); if (ImGui::Button("Copy Log Path", ImVec2(bw, 36)))
+                copy_text(mzm::redact_user_path((log_dir / "latest.log").string(), home), "Log path");
+            if (ImGui::Button("Open Feedback Guide", ImVec2(bw, 36))) {
+                if (!mzm::open_file(executable.parent_path() / "FEEDBACK.md")) message = "FEEDBACK.md not found: the instructions are shown below.";
+            }
+            ImGui::SameLine(); if (ImGui::Button("Copy Build Info", ImVec2(bw, 36)))
+                copy_text(mzm::format_build_info(build), "Build info");
+            ImGui::SameLine(); if (ImGui::Button("Refresh details", ImVec2(bw, 36))) refresh_support();
+            ImGui::Spacing();
+            ImGui::TextColored(mzm::theme::success, "No diagnostic data is uploaded automatically.");
+            ImGui::TextWrapped("Nothing leaves your computer unless you click Report Issue and paste it yourself. "
+                               "If useful, attach a screenshot to the GitHub issue. Never upload your ROM, BIOS or save file.");
+            ImGui::Spacing();
+            if (ImGui::CollapsingHeader("Windows security warning?")) {
+                ImGui::TextWrapped("%s", mzm::security_guidance().c_str());
+            }
+            if (ImGui::CollapsingHeader("What to send")) {
+                ImGui::TextWrapped("%s", mzm::feedback_guide_text().c_str());
+            }
+            if (ImGui::CollapsingHeader("Build and system details")) {
+                const std::string text = mzm::format_diagnostic(make_input());
+                ImGui::TextWrapped("%s", text.c_str());
+            }
+            show_tail = ImGui::CollapsingHeader("Recent log (latest.log)");
+            if (show_tail) {
+                if (ImGui::Button("Refresh log")) tail_loaded = false;
+                if (!tail_loaded) {
+                    tail_text = mzm::redact_text(mzm::tail_lines(mzm::read_text_file(log_dir / "latest.log", 1 << 16), 15), home);
+                    tail_loaded = true;
+                }
+                ImGui::TextWrapped("%s", tail_text.empty() ? "(no log yet)" : tail_text.c_str());
+            }
+            ImGui::EndChild();
         } else {
             heading("ABOUT", "MZM Recompiled  /  " MZM_RELEASE_LABEL "  /  Public Runtime Test", bold);
             ImGui::BeginChild("##about", ImVec2(0, -92), true);
@@ -348,18 +462,10 @@ int game_launcher_preboot(std::vector<std::string>& args,
             ImGui::TextColored(mzm::theme::cool, "BUILT WITH");
             ImGui::TextUnformatted("GBARecomp  /  recomp-ui");
             ImGui::EndChild();
-            if (ImGui::Button("Open Logs Folder", ImVec2(190, 38))) {
-                fs::create_directories(mzm::user_log_dir(), ec);
-#ifdef _WIN32
-                const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(
-                    nullptr, L"open", mzm::user_log_dir().c_str(),
-                    nullptr, nullptr, SW_SHOWNORMAL));
-                if (result <= 32) message = "Could not open logs folder.";
-#else
-                const std::string url = "file://" + mzm::user_log_dir().string();
-                if (SDL_OpenURL(url.c_str()) != 0) message = "Could not open logs folder.";
-#endif
-            }
+            if (ImGui::Button("Open Logs Folder", ImVec2(190, 38)))
+                if (!mzm::open_folder(mzm::user_log_dir())) message = "Could not open logs folder.";
+            ImGui::SameLine();
+            if (ImGui::Button("Support / Report Problem", ImVec2(230, 38))) { page = Page::Support; sysinfo_loaded = false; }
         }
         if (page != Page::Home && page != Page::Setup && page != Page::Data) {
             if (ImGui::Button("Back to Home", ImVec2(170, 38))) {
