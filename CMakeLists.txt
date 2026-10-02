@@ -481,6 +481,8 @@ if(MZM_RECOMP_UI)
             src/mzm_support.cpp
         )
         target_include_directories(mzm_launcher_ui PRIVATE
+            "${RECOMP_UI_ROOT}/src"
+            "${RECOMP_UI_ROOT}/src/third_party"
             "${RECOMP_UI_ROOT}/src/third_party/imgui"
             "${RECOMP_UI_ROOT}/src/third_party/imgui/backends"
             "${RECOMP_UI_ROOT}/src/common"
