@@ -1,7 +1,9 @@
 #include "mzm_support.h"
 
 #include <SDL.h>
+#if !defined(MZM_PLATFORM_UWP)
 #include <SDL_opengl.h>
+#endif
 
 #include <cstdlib>
 #include <cstring>
@@ -101,8 +103,13 @@ SystemInfo collect_system_info(SDL_Window* window) {
     s.arch = "x86_64";
 #endif
     s.cpu = cpu_brand();
+#if !defined(MZM_PLATFORM_UWP)
     if (const GLubyte* r = glGetString(GL_RENDERER)) s.gpu = reinterpret_cast<const char*>(r);
     if (const GLubyte* v = glGetString(GL_VERSION)) s.gl_version = reinterpret_cast<const char*>(v);
+#else
+    s.gpu = "Direct3D 11 (UWP/Xbox)";
+    s.gl_version = "N/A (Direct3D 11)";
+#endif
     if (window) {
         SDL_DisplayMode mode{};
         const int index = SDL_GetWindowDisplayIndex(window);
