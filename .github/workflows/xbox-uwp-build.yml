@@ -173,7 +173,7 @@ jobs:
 
           Copy-Item "assets\uwp\Package.appxmanifest" -Destination "dist\staging\AppxManifest.xml"
           Copy-Item "assets\icons\*.png" -Destination "dist\staging\assets\icons\"
-          Copy-Item "recomp-ui\assets\fonts\*.ttf" -Destination "dist\staging\assets\fonts\"
+          Copy-Item "recomp-ui\assets\common\fonts\*.ttf" -Destination "dist\staging\assets\fonts\"
           Copy-Item "configs\mzm-us.toml" -Destination "dist\staging\configs\"
           Copy-Item "configs\nes-emulator-map-us.toml" -Destination "dist\staging\configs\"
 

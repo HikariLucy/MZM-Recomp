@@ -513,7 +513,7 @@ if(MZM_RECOMP_UI)
                 COMMAND ${CMAKE_COMMAND} -E make_directory
                         "$<TARGET_FILE_DIR:MZMRecomp>/assets/fonts"
                 COMMAND ${CMAKE_COMMAND} -E copy_directory
-                        "${RECOMP_UI_ROOT}/assets/fonts"
+                        "${RECOMP_UI_ROOT}/assets/common/fonts"
                         "$<TARGET_FILE_DIR:MZMRecomp>/assets/fonts"
                 VERBATIM)
         else()
