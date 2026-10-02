@@ -17,6 +17,11 @@ option(MZM_RECOMP_UI "Build the recomp-ui pre-boot launcher" ON)
 # Human-readable release identity shown in the launcher About page and the log.
 set(MZM_RELEASE_LABEL "Beta 4 (dev)" CACHE STRING "Release label shown to users")
 set(MZM_RELEASE_CHANNEL "beta" CACHE STRING "Release channel: development | beta | rc | stable")
+# Xbox / UWP target architecture definition
+option(MZM_PLATFORM_UWP "Target Universal Windows Platform (Xbox Series X|S / UWP x64)" OFF)
+if(MZM_PLATFORM_UWP)
+    add_compile_definitions(MZM_PLATFORM_UWP=1)
+endif()
 # NES-PERF-1: opt-in timing/counter instrumentation for the NES harness only.
 option(MZM_PERF_PROFILE "Instrument mzm_nes_behavior_test (profiling builds only)" OFF)
 option(MZM_PERF_WRAP_TICK "With MZM_PERF_PROFILE: also count guest instructions (adds a call per instruction)" OFF)
@@ -142,7 +147,7 @@ else()
         "-Wl,--end-group")
 endif()
 
-if(WIN32)
+if(WIN32 AND NOT MZM_PLATFORM_UWP)
     set(MZM_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/mzm-recompiled.ico")
     configure_file(assets/windows/mzm-recompiled.rc
         "${CMAKE_CURRENT_BINARY_DIR}/mzm-recompiled.rc" @ONLY)
@@ -490,7 +495,7 @@ if(MZM_RECOMP_UI)
 
         find_package(SDL2 REQUIRED)
         target_link_libraries(mzm_launcher_ui PUBLIC SDL2::SDL2)
-        if(WIN32)
+        if(WIN32 AND NOT MZM_PLATFORM_UWP)
             target_link_libraries(mzm_launcher_ui PUBLIC opengl32 shell32)
         endif()
 

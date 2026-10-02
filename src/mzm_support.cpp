@@ -146,7 +146,9 @@ bool open_folder(const fs::path& dir) {
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (!test_dir().empty()) { record("folder", dir.string()); return true; }
-#ifdef _WIN32
+#if defined(MZM_PLATFORM_UWP)
+    return false; // Desktop shell explorer is unavailable in Xbox / UWP sandbox
+#elif defined(_WIN32)
     return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
 #else
     return SDL_OpenURL(file_url(dir.string()).c_str()) == 0;
@@ -157,7 +159,9 @@ bool open_file(const fs::path& file) {
     std::error_code ec;
     if (!fs::is_regular_file(file, ec)) return false;
     if (!test_dir().empty()) { record("file", file.string()); return true; }
-#ifdef _WIN32
+#if defined(MZM_PLATFORM_UWP)
+    return false; // Desktop document viewers are unavailable in Xbox / UWP sandbox
+#elif defined(_WIN32)
     return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", file.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
 #else
     return SDL_OpenURL(file_url(file.string()).c_str()) == 0;

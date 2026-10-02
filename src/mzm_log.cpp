@@ -138,7 +138,10 @@ void* tee_loop(void* arg) {
 #endif
 
 void install_crash_marker() {
-#ifdef _WIN32
+#if defined(MZM_PLATFORM_UWP)
+    // Under UWP, SetUnhandledExceptionFilter is restricted. Exception handling
+    // is managed by the WinRT application lifecycle / SEH.
+#elif defined(_WIN32)
     SetUnhandledExceptionFilter(crash_filter);
 #else
     for (int sig : {SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS}) std::signal(sig, crash_handler);
