@@ -171,6 +171,7 @@ if(MZM_PLATFORM_UWP)
     target_sources(MZMRecomp PRIVATE src/platform/uwp/SDL_winrt_main_NonXAML.cpp)
     set_target_properties(MZMRecomp PROPERTIES
         WIN32_EXECUTABLE TRUE
+        VS_WINDOWS_TARGET_PLATFORM_MIN_VERSION "10.0.17763.0"
     )
 endif()
 
