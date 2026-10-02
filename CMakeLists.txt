@@ -499,6 +499,10 @@ if(MZM_RECOMP_UI)
                 "${RECOMP_UI_ROOT}/src/third_party/imgui/imgui_widgets.cpp"
                 "${RECOMP_UI_ROOT}/src/third_party/imgui/backends/imgui_impl_sdl2.cpp"
                 "${RECOMP_UI_ROOT}/src/third_party/imgui/backends/imgui_impl_sdlrenderer2.cpp"
+                "${RECOMP_UI_ROOT}/src/common/sha1.c"
+                "${RECOMP_UI_ROOT}/src/common/recomp_runtime_ui.c"
+                "${RECOMP_UI_ROOT}/src/common/recomp_runtime_settings.c"
+                "${RECOMP_UI_ROOT}/src/common/backends/imgui/runtime_ui_imgui.cpp"
             )
             target_compile_definitions(mzm_launcher_ui PRIVATE
                 RECOMP_LAUNCHER
