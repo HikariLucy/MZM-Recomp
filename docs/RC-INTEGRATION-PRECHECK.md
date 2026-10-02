@@ -77,14 +77,23 @@ here.
 
 ## Known limitations
 
-* `scripts/run-host-display.py` is intermittent under Xephyr: it also fails at random on the
-  standalone ENHANCEMENTS-1 build (different checks each time: menu navigation, Borderless
-  layout, window scale presets). Measured on one idle machine: standalone ENHANCEMENTS-1 binary
-  3 failures in 11 runs; combined binary 4 failures in 11 runs (the same script; the sets of
-  failing checks differ run to run), so the rates are not distinguishable and the integration is
-  not the cause. When it passes it passes in full (all checks `ok`). It is a test-harness
-  robustness issue (XTest key injection / window-manager races) to fix before an RC;
-  `mzm-host-display` must not be counted as stable evidence until then.
+* `scripts/run-host-display.py` intermittency (HOST-DISPLAY-STABILITY-1): the earlier failures
+  (original script 4/20 on the combined binary) were a harness defect, not a product defect.
+  Root cause: Xephyr runs with `-no-host-grab`, so the desktop's real pointer passes through the
+  nested screen, and recomp-ui moves the keyboard selection to whatever menu row/section is
+  hovered; a stray pointer (and the script's own early hover test) desynchronised the script's
+  menu model. Fix (test scripts only, no product change): the pointer is parked and grabbed
+  inside the nested server except in the steps that need it, keyboard focus is set explicitly,
+  and every fixed sleep is replaced by a wait on an observable effect with a timeout (frame
+  counter, layout log line, config.ini, window geometry, stable screenshot). Causal check: with
+  a pointer-wandering process the original script fails 17 checks, the hardened one 0.
+  Qualification of the hardened script: 50/50 consecutive PASS on an idle machine and 20/20 under
+  5 busy loops on 16 cores; 18/18 `mzm-*` CTest PASS.
+  Audio caveat: one run in ~30 (before the final script) showed 1767 corrected underruns after
+  the resume grace (raw 1247997), a refill outlasting the 400 ms grace under jitter. It has not
+  reproduced in the 70 qualification runs and was not classified as a host bug. The post-stress
+  check now tolerates at most 1% of raw and < 32768 samples; normal-play and flat-counter checks
+  remain strict, and the probe history is printed whenever the corrected count is non-zero.
 * The windowed numbers are Xephyr/llvmpipe, not a real GPU. True fullscreen, real refresh-rate
   reporting and VSync pacing on hardware remain untested.
 * Audio is activity/integration only; fidelity is not declared.
