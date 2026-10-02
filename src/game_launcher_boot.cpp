@@ -330,7 +330,7 @@ int game_launcher_preboot(std::vector<std::string>& args,
 #ifdef _WIN32
             ImGui::TextWrapped("Keyboard and controller bindings load from your MZMRecompiled AppData folder.");
 #else
-            ImGui::TextWrapped("Keyboard and controller bindings load from mzm-keybinds.ini and mzm-config.ini beside the executable.");
+            ImGui::TextWrapped("Keyboard and controller bindings load from keybinds.ini and config.ini beside the executable.");
 #endif
             ImGui::TextWrapped("Screen color model is selected at launch via [video].screen, --screen, or GBARECOMP_SCREEN.");
             ImGui::EndChild();

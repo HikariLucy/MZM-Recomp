@@ -52,19 +52,21 @@ NES testing is optional for this beta.
 
 ## Your data: where things are stored
 
-Nothing is written to the install folder except where noted. Paths are
-resolved by the program at run time:
+The locations below were checked on Linux by running the packaged build with a clean home
+folder. The Windows column follows the program's code (it redirects its settings to the
+user's AppData folders) and is **not yet verified on a real Windows machine**.
 
-| What | Windows | Linux |
+| What | Windows (expected) | Linux (verified) |
 |---|---|---|
-| Launcher settings (ROM/BIOS *paths*, not the files) | `%APPDATA%\MZMRecompiled\launcher.ini` | `$XDG_CONFIG_HOME/MZMRecompiled/launcher.ini` (default `~/.config/MZMRecompiled/`) |
-| Runtime config and key bindings (`mzm-config.ini`, `mzm-keybinds.ini`, ROM/BIOS caches) | `%APPDATA%\MZMRecompiled\` | LINUX_CONFIG_PLACEHOLDER |
+| Launcher settings: ROM/BIOS *paths* (`launcher.ini`) | `%APPDATA%\MZMRecompiled\` | `$XDG_CONFIG_HOME/MZMRecompiled/` (default `~/.config/MZMRecompiled/`) |
+| In-game settings and bindings (`config.ini`, `keybinds.ini`), last-used ROM/BIOS path cache (`rom.cfg`, `bios.cfg`) | `%APPDATA%\MZMRecompiled\` | **in the program folder, next to `MZMRecomp`** (so keep it somewhere writable) |
 | **Log of the latest run** (`latest.log`, overwritten every run) | `%LOCALAPPDATA%\MZMRecompiled\logs\latest.log` | `$XDG_STATE_HOME/MZMRecompiled/logs/latest.log` (default `~/.local/state/MZMRecompiled/logs/`) |
 | Launcher event history (`mzm-recompiled.log`, appended) | same folder as `latest.log` | same folder as `latest.log` |
-| **Save file** (`<ROM name>.sav`) and save states | **beside your ROM file** — keep the ROM in a writable folder | **beside your ROM file** |
+| **Save file** (`<ROM name>.sav`) | **beside your ROM file** | **beside your ROM file** |
 
-The launcher's **About → Open Logs Folder** button opens the logs folder.
-Back up your `.sav` before testing anything.
+Your ROM and BIOS are never copied: only their paths are remembered. The launcher's
+**About → Open Logs Folder** button opens the logs folder. Back up your `.sav` before testing.
+Deleting `launcher.ini` (and `rom.cfg`/`bios.cfg`) makes the launcher ask for the files again.
 
 ## Logs and privacy
 

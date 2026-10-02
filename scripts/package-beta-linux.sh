@@ -18,8 +18,8 @@ grep -q '^CMAKE_BUILD_TYPE:STRING=Release$' "$BUILD/CMakeCache.txt" || fail 'not
 grep -q '^MZM_RECOMP_UI:BOOL=ON$' "$BUILD/CMakeCache.txt" || fail 'launcher (MZM_RECOMP_UI) is OFF'
 grep -q '^MZM_PERF_PROFILE:BOOL=OFF$' "$BUILD/CMakeCache.txt" || fail 'profiling build'
 [[ -d "$BUILD/assets/fonts" && -d "$BUILD/assets/img" ]] || fail 'launcher assets missing from build'
-strings "$BUILD/MZMRecomp" | grep -q 'INITIAL SYSTEM CONFIGURATION' || fail 'launcher not linked into MZMRecomp'
-readelf -d "$BUILD/MZMRecomp" | grep -Ei 'rpath|runpath' && fail 'binary has an RPATH/RUNPATH'
+grep -qa 'INITIAL SYSTEM CONFIGURATION' "$BUILD/MZMRecomp" || fail 'launcher not linked into MZMRecomp'
+if readelf -d "$BUILD/MZMRecomp" | grep -Eqi 'rpath|runpath'; then fail 'binary has an RPATH/RUNPATH'; fi
 for doc in README.md FEEDBACK.md KNOWN-ISSUES.md RELEASE-NOTES-BETA-3.md; do
     [[ -f "$DOCS/$doc" ]] || fail "missing $DOCS/$doc"
 done
