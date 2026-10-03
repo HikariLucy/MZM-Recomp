@@ -227,30 +227,30 @@ jobs:
           }
 
           # Create installation instructions
-          $guide = @"
-          # MZM Recompiled — Xbox Series X|S Developer Mode Installation
+          $guide = @'
+# MZM Recompiled — Xbox Series X|S Developer Mode Installation
 
-          ## Package Contents
-          - `MZMRecompiled-Xbox-UWP-x64.msix`: The signed game package.
-          - `dev.cer`: Development certificate for installing the package.
-          - `Microsoft.VCLibs.x64.14.00.appx`: C++ runtime dependency (if needed).
+## Package Contents
+- `MZMRecompiled-Xbox-UWP-x64.msix`: The signed game package.
+- `dev.cer`: Development certificate for installing the package.
+- `Microsoft.VCLibs.x64.14.00.appx`: C++ runtime dependency (if needed).
 
-          ## Installation Steps via Xbox Device Portal
-          1. Enable Developer Mode on your Xbox Series X|S.
-          2. Access the Xbox Device Portal from your PC browser (https://<xbox-ip>:11443).
-          3. Navigate to **My games & apps** -> **Install**.
-          4. In **Choose file to upload**, select `MZMRecompiled-Xbox-UWP-x64.msix`.
-          5. In **Choose dependencies**, select `Microsoft.VCLibs.x64.14.00.appx` (if prompted or not pre-installed).
-          6. Complete installation and select **Done**.
+## Installation Steps via Xbox Device Portal
+1. Enable Developer Mode on your Xbox Series X|S.
+2. Access the Xbox Device Portal from your PC browser (https://<xbox-ip>:11443).
+3. Navigate to **My games & apps** -> **Install**.
+4. In **Choose file to upload**, select `MZMRecompiled-Xbox-UWP-x64.msix`.
+5. In **Choose dependencies**, select `Microsoft.VCLibs.x64.14.00.appx` (if prompted or not pre-installed).
+6. Complete installation and select **Done**.
 
-          ## Adding Game Files (ROM and BIOS)
-          1. In Xbox Device Portal, navigate to **File explorer**.
-          2. Browse to `DevelopmentFiles\WindowsApps\MZMRecompiled...\LocalState` (or `LocalAppData\MZMRecompiled\LocalState`).
-          3. In `LocalState`, create two folders: `roms` and `bios`.
-          4. Upload your Metroid: Zero Mission (USA) ROM into `LocalState\roms\`.
-          5. Upload your Game Boy Advance BIOS into `LocalState\bios\`.
-          6. Launch MZM Recompiled from the Xbox Developer Home dashboard!
-          "@
+## Adding Game Files (ROM and BIOS)
+1. In Xbox Device Portal, navigate to **File explorer**.
+2. Browse to `DevelopmentFiles\WindowsApps\MZMRecompiled...\LocalState` (or `LocalAppData\MZMRecompiled\LocalState`).
+3. In `LocalState`, create two folders: `roms` and `bios`.
+4. Upload your Metroid: Zero Mission (USA) ROM into `LocalState\roms\`.
+5. Upload your Game Boy Advance BIOS into `LocalState\bios\`.
+6. Launch MZM Recompiled from the Xbox Developer Home dashboard!
+'@
           Set-Content -Path "dist\README-XBOX-TEST.md" -Value $guide
 
           # Compute SHA-256 sums

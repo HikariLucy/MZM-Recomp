@@ -33,6 +33,7 @@ build/
 build-*/
 out/
 dist/
+artifacts/
 CMakeFiles/
 CMakeCache.txt
 cmake-build-*/
